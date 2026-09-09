@@ -54,8 +54,7 @@ export default function Layout({ children }) {
       <header className="topnav">
         <div className="topnav-inner">
           <div className="topnav-brand">
-            <Wordmark height={34} decorative />
-            <span>CHIEFS OF ANGELS</span>
+            <Wordmark height={34} />
           </div>
           <nav className="topnav-links">
             {items.map((item) => (
