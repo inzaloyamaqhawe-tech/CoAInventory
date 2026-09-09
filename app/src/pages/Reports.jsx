@@ -210,30 +210,45 @@ export default function Reports() {
           ))}
         </div>
 
-        {pageRows.map((r) => (
-          <div key={r.id} className="row-card">
-            <div className="who">
-              <span className="avatar avatar-sm">{STAFF.find((s) => s.id === r.performedBy)?.initials ?? '—'}</span>
-              <span>
-                <span className="n">
-                  {r.subject}
-                  {typeof r.qtyDelta === 'number' && (
-                    <span className={'mono ' + (r.qtyDelta >= 0 ? 'sale-pos' : 'sale-neg')} style={{ marginLeft: 8 }}>
-                      {r.qtyDelta >= 0 ? '+' : ''}
-                      {r.qtyDelta}
-                    </span>
-                  )}
-                </span>
-                <span className="r report-meta">
-                  {staffName(r.performedBy)} · {branchName(r.branchId)} · {formatGivenAt(r.at)}
-                  {r.note && ` · ${r.note}`}
-                </span>
-              </span>
-            </div>
-            <StatusPill status={r.type} />
-          </div>
-        ))}
-        {rows.length === 0 && <p className="muted">No activity matches.</p>}
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Date &amp; time</th>
+                <th>Who</th>
+                <th>Branch</th>
+                <th>Event</th>
+                <th>Item / task</th>
+                <th>Qty</th>
+                <th>Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pageRows.map((r) => (
+                <tr key={r.id}>
+                  <td className="mono muted">{formatGivenAt(r.at)}</td>
+                  <td>{staffName(r.performedBy)}</td>
+                  <td>{branchName(r.branchId)}</td>
+                  <td>
+                    <StatusPill status={r.type} />
+                  </td>
+                  <td>{r.subject}</td>
+                  <td className={'mono' + (typeof r.qtyDelta === 'number' ? r.qtyDelta >= 0 ? ' sale-pos' : ' sale-neg' : '')}>
+                    {typeof r.qtyDelta === 'number' ? (r.qtyDelta >= 0 ? `+${r.qtyDelta}` : r.qtyDelta) : '—'}
+                  </td>
+                  <td className="muted">{r.note || '—'}</td>
+                </tr>
+              ))}
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="muted" style={{ textAlign: 'center' }}>
+                    No activity matches.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
         {rows.length > 0 && <Pagination page={page} pageSize={pageSize} total={rows.length} onPage={setPage} onPageSize={setPageSize} />}
       </section>
     </div>
