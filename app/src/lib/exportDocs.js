@@ -5,6 +5,35 @@
 import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+// A print-sized copy, not the full-resolution nav asset — jsPDF embeds
+// whatever pixel data it's handed at full size regardless of how small it's
+// drawn on the page, and the nav-resolution PNG was bloating every export
+// to several megabytes for a 30mm-wide header mark.
+import logoBlack from '../assets/logo-mark-print.png'
+
+// jsPDF's addImage() needs actual pixel data (a data URI), not a URL — and
+// Vite serves this asset from a hashed /assets/ path rather than inlining
+// it, so it has to be fetched once and converted. Cached after the first
+// export since it's the same letterhead mark every time and every PDF
+// export would otherwise re-fetch it.
+let logoDataUrlPromise = null
+function getLogoDataUrl() {
+  if (!logoDataUrlPromise) {
+    logoDataUrlPromise = fetch(logoBlack)
+      .then((r) => r.blob())
+      .then(
+        (blob) =>
+          new Promise((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(reader.result)
+            reader.onerror = reject
+            reader.readAsDataURL(blob)
+          })
+      )
+      .catch(() => null) // a PDF without the letterhead mark still beats one that silently never downloads
+  }
+  return logoDataUrlPromise
+}
 
 export function exportExcel(filename, sheetName, headerRow, rows) {
   const ws = XLSX.utils.aoa_to_sheet([headerRow, ...rows])
@@ -21,18 +50,25 @@ export function exportExcel(filename, sheetName, headerRow, rows) {
 // the page, each with its own sub-heading — for a report that's genuinely
 // more than one table (branch leaderboard + staff completion, say).
 // Single-table callers can still pass `headerRow`/`rows` directly.
-export function exportPDF({ title, subtitle, meta, headerRow, rows, sections, filename }) {
+export async function exportPDF({ title, subtitle, meta, headerRow, rows, sections, filename }) {
   const doc = new jsPDF()
   const pageWidth = doc.internal.pageSize.getWidth()
   const allSections = sections ?? [{ headerRow, rows }]
 
-  // Brand + title/subtitle sit stacked at the top, then the rule — with
-  // enough clearance below the subtitle's own descenders that it never
-  // draws through the text (this used to cut a strikethrough right
-  // across "All branches").
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(10)
-  doc.text('CHIEFS OF ANGELS', 14, 15)
+  // The real logo on every printed document, same as Bolide WMS does it —
+  // sized to sit comfortably above the rule with room to spare, so the
+  // existing ruleY math (set for a single line of "CHIEFS OF ANGELS" text)
+  // never needs to change to fit it.
+  const logoDataUrl = await getLogoDataUrl()
+  if (logoDataUrl) {
+    const logoW = 30
+    const logoH = logoW * (456 / 1382) // the mark's actual aspect ratio
+    doc.addImage(logoDataUrl, 'PNG', 14, 8, logoW, logoH)
+  } else {
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(10)
+    doc.text('CHIEFS OF ANGELS', 14, 15)
+  }
 
   doc.setFontSize(17)
   doc.text(title, pageWidth - 14, 16, { align: 'right' })
