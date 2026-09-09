@@ -18,6 +18,14 @@ function mulberry32(seed) {
   }
 }
 
+// Bump this whenever the seed-generation logic changes in a way that should
+// actually reach someone who already has a browser with a persisted state —
+// store.jsx's load() compares this against what's saved and throws the old
+// data away instead of quietly keeping serving whatever tier probabilities
+// were live the day they first opened the app. Without this, editing this
+// file only ever affects a brand-new browser profile.
+export const DATA_VERSION = 3
+
 const rand = mulberry32(20260908)
 const ri = (min, max) => Math.floor(rand() * (max - min + 1)) + min
 const pick = (arr) => arr[Math.floor(rand() * arr.length)]
@@ -37,23 +45,23 @@ const CATEGORY_PROFILE = {
   Skirts: { wh: [2, 6], reorder: 1 },
 }
 
-// ~1% of retail lines run low/out (and are, definitionally, still selling —
-// that's why they're low), 7% sit deliberately overstocked (and definitionally
-// aren't selling — that's why nobody's reordered them down), the rest are
-// healthy with an occasional cold spell.
+// ~0.3% of retail lines run low/out (and are, definitionally, still selling —
+// that's why they're low), ~1.5% sit deliberately overstocked (and
+// definitionally aren't selling — that's why nobody's reordered them down),
+// the rest are healthy with an occasional cold spell.
 //
-// The low-tier rate is the one number that actually controls how many
-// transfer suggestions show up: the warehouse buffer is generous enough
-// that it's a "surplus" source for almost every variant already, so a
-// suggestion fires the moment *any* retail branch dips low. At 9% low,
-// ~200 distinct variants meant 40-80 simultaneous suggestions — a wall of
-// "unread mail" on day one, not a short, credible list. At ~1%, only a
-// handful of lines are genuinely short at once, which both reads as real
-// signal and is a more honest picture of a well-run multi-branch shop.
+// Both the Alerts feed and the transfer-suggestions feed are driven off
+// these same two tiers, and the Alerts total in particular is the number a
+// manager sees first (the nav badge) — it needs to read as "a handful of
+// real things to look at today," not a wall of unread mail. At 9%/16% this
+// was 40-85 simultaneous transfer suggestions and ~80 alerts across the
+// ~480 retail-branch lines in the catalogue. At 1%/8% that came down to
+// ~44 alerts — better, but still not the "at most ~10" a first-day preview
+// should show. These numbers land it around single digits to low teens.
 function retailLine(reorder) {
   const roll = rand()
-  if (roll < 0.01) return { qty: ri(0, reorder), tier: 'low' }
-  if (roll < 0.08) return { qty: ri(reorder * 4, reorder * 6), tier: 'over' }
+  if (roll < 0.003) return { qty: ri(0, reorder), tier: 'low' }
+  if (roll < 0.018) return { qty: ri(reorder * 4, reorder * 6), tier: 'over' }
   return { qty: ri(reorder + 1, reorder * 3), tier: 'healthy' }
 }
 
@@ -281,6 +289,7 @@ export function buildInitialState() {
   const stockLevels = generateStockLevels()
   const orders = generateOrders(stockLevels)
   return {
+    dataVersion: DATA_VERSION,
     stockLevels,
     orders,
     tasks: generateTasks(),

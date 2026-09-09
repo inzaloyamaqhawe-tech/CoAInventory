@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useReducer } from 'react'
-import { buildInitialState } from '../data/generate'
+import { buildInitialState, DATA_VERSION } from '../data/generate'
 
 const STORAGE_KEY = 'coa-ops-pass-v1'
 const StoreCtx = createContext(null)
@@ -9,6 +9,12 @@ function load() {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
       const parsed = JSON.parse(raw)
+      // A browser that already has a saved session from before a seed-data
+      // change (retuned alert volume, a new field) would otherwise just go
+      // on serving whatever it generated the day it first opened the app —
+      // editing generate.js would only ever affect a brand-new profile.
+      // Throw the whole thing away and reseed once the version moves.
+      if (parsed.dataVersion !== DATA_VERSION) return buildInitialState()
       // Guard against a shape saved before a field existed — someone's
       // browser can have orders/items persisted from before pick-tracking
       // and assignment notes existed, and undefined pickedQty breaks both
