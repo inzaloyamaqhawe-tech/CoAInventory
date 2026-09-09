@@ -25,8 +25,7 @@ export default function SignIn() {
       <div className="signin-brand">
         <div className="signin-brand-inner">
           <span className="signin-brand-mark">
-            <Wordmark size={30} />
-            <span>CHIEFS OF ANGELS</span>
+            <Wordmark height={72} variant="white" />
           </span>
           <h1>Run every branch from one screen.</h1>
           <p>Stock, transfers, staff and orders — built for the shop floor, not a back-office desktop.</p>

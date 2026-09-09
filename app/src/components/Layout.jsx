@@ -54,7 +54,7 @@ export default function Layout({ children }) {
       <header className="topnav">
         <div className="topnav-inner">
           <div className="topnav-brand">
-            <Wordmark size={22} />
+            <Wordmark height={34} decorative />
             <span>CHIEFS OF ANGELS</span>
           </div>
           <nav className="topnav-links">
