@@ -19,6 +19,7 @@ const PATHS = {
   tag: '<path d="M12 3h6a2 2 0 012 2v6a2 2 0 01-.6 1.4l-9 9a2 2 0 01-2.8 0l-5-5a2 2 0 010-2.8l9-9A2 2 0 0112 3Z"/><circle cx="16.5" cy="7.5" r="1.4" fill="currentColor" stroke="none"/>',
   printer: '<path d="M6 9V4h12v5"/><rect x="4" y="9" width="16" height="7" rx="1.5"/><path d="M7 14h10v6H7z"/><path d="M8 12h.01"/>',
   download: '<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 20h16"/>',
+  x: '<path d="M6 6l12 12"/><path d="M18 6L6 18"/>',
 }
 
 export default function Icon({ name, size = 18, className }) {

@@ -257,6 +257,11 @@ a, a:link, a:visited, a:hover, a:active { color: inherit; text-decoration: none;
 .row-card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
 .row-card .name { font-size: 13.5px; font-weight: 600; }
 .row-card .sub { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+/* Staff rows on Team.jsx are real <button>s (clicking one filters the task
+   list below to that person) — reset the button chrome back to a plain
+   row-card and add a visible "this is the active filter" state. */
+.row-card-clickable { width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.row-card-active { border-color: var(--ink); box-shadow: 0 0 0 1.5px var(--ink); }
 
 /* ---------- buttons / inputs ---------- */
 .btn-small {
@@ -354,6 +359,8 @@ a, a:link, a:visited, a:hover, a:active { color: inherit; text-decoration: none;
 
 /* ---------- tasks ---------- */
 .task-row { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 11px 12px; margin-bottom: 8px; cursor: pointer; }
+.task-row-readonly { cursor: default; }
+.task-row-readonly .check { opacity: 0.5; }
 .task-row .check { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--muted); flex: none; display: flex; align-items: center; justify-content: center; color: #fff; }
 .task-row.done .check { border-color: var(--ok); background: var(--ok); }
 .task-row .name { font-size: 13px; font-weight: 600; }
@@ -423,6 +430,9 @@ a, a:link, a:visited, a:hover, a:active { color: inherit; text-decoration: none;
 }
 .segmented button.on-add.active { background: var(--ok); color: #fff; }
 .segmented button.on-remove.active { background: var(--critical); color: #fff; }
+
+.checkbox-row { display: flex; align-items: center; gap: 9px; font-size: 13px; padding: 2px 2px 4px; cursor: pointer; }
+.checkbox-row input { width: 16px; height: 16px; accent-color: var(--critical); cursor: pointer; }
 
 .qty-input-row { display: flex; align-items: center; gap: 10px; }
 .qty-input-row input {

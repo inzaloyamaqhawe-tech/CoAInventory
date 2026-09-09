@@ -6,15 +6,27 @@ export default function AdjustStockModal({ row, product, onClose, onConfirm }) {
   const [direction, setDirection] = useState('add') // 'add' | 'remove'
   const [qty, setQty] = useState('')
   const [note, setNote] = useState('')
+  const [isReturn, setIsReturn] = useState(false) // a customer return, not fresh stock in
 
   const amount = Math.max(0, Math.floor(Number(qty) || 0))
   const delta = direction === 'add' ? amount : -amount
   const nextQty = Math.max(0, row.qtyOnHand + delta)
   const valid = amount > 0 && (direction === 'add' || amount <= row.qtyOnHand)
+  const soldLast14d = row.soldLast14d ?? 0
+  const soldAfterReturn = isReturn ? Math.max(0, soldLast14d - amount) : soldLast14d
+
+  function setDir(next) {
+    setDirection(next)
+    if (next !== 'add') setIsReturn(false) // "return" only makes sense when stock is coming back in
+  }
 
   function confirm() {
     if (!valid) return
-    onConfirm(delta, note.trim() || (direction === 'add' ? 'Stock received' : 'Stock removed'))
+    onConfirm(
+      delta,
+      note.trim() || (isReturn ? 'Customer return' : direction === 'add' ? 'Stock received' : 'Stock removed'),
+      { isReturn: direction === 'add' && isReturn }
+    )
   }
 
   return (
@@ -28,19 +40,26 @@ export default function AdjustStockModal({ row, product, onClose, onConfirm }) {
             Cancel
           </button>
           <button className="btn-small" disabled={!valid} onClick={confirm}>
-            {direction === 'add' ? 'Add to stock' : 'Remove from stock'}
+            {isReturn ? 'Record return' : direction === 'add' ? 'Add to stock' : 'Remove from stock'}
           </button>
         </>
       }
     >
       <div className="segmented">
-        <button className={'on-add' + (direction === 'add' ? ' active' : '')} onClick={() => setDirection('add')}>
+        <button className={'on-add' + (direction === 'add' ? ' active' : '')} onClick={() => setDir('add')}>
           + Received
         </button>
-        <button className={'on-remove' + (direction === 'remove' ? ' active' : '')} onClick={() => setDirection('remove')}>
+        <button className={'on-remove' + (direction === 'remove' ? ' active' : '')} onClick={() => setDir('remove')}>
           &minus; Removed
         </button>
       </div>
+
+      {direction === 'add' && (
+        <label className="checkbox-row">
+          <input type="checkbox" checked={isReturn} onChange={(e) => setIsReturn(e.target.checked)} />
+          <span>This is a customer return, not new stock in</span>
+        </label>
+      )}
 
       <div>
         <span className="field-label">How many units?</span>
@@ -74,11 +93,17 @@ export default function AdjustStockModal({ row, product, onClose, onConfirm }) {
         <span className={'to ' + direction}>{nextQty}</span>
       </div>
 
+      {isReturn && amount > 0 && (
+        <p className="small muted" style={{ marginTop: -8 }}>
+          Counted as a return, not a sale — units sold (14d) drops from {soldLast14d} to {soldAfterReturn}.
+        </p>
+      )}
+
       <div>
         <span className="field-label">Note (optional)</span>
         <textarea
           className="textarea"
-          placeholder={direction === 'add' ? 'e.g. Delivery from warehouse' : 'e.g. Damaged, returned, count correction'}
+          placeholder={isReturn ? 'e.g. Wrong size, no matching size in stock — refunded' : direction === 'add' ? 'e.g. Delivery from warehouse' : 'e.g. Damaged, count correction'}
           value={note}
           onChange={(e) => setNote(e.target.value)}
         />

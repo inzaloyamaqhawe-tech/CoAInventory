@@ -99,9 +99,12 @@ export default function ProductDetail() {
           <div key={a.id} className="row-card">
             <div>
               <div className="name">
-                {a.type.replace('_', ' ')} · {branchName(a.branchId)}
+                {a.type === 'return' ? <StatusPill status="return" /> : a.type.replace('_', ' ')} · {branchName(a.branchId)}
               </div>
-              <div className="sub">{staffName(a.performedBy)} · {timeAgo(a.at)}</div>
+              <div className="sub">
+                {staffName(a.performedBy)} · {timeAgo(a.at)}
+                {a.note && ` · ${a.note}`}
+              </div>
             </div>
             <span className={'mono ' + (a.qtyDelta >= 0 ? 'sale-pos' : 'sale-neg')}>
               {a.qtyDelta >= 0 ? '+' : ''}

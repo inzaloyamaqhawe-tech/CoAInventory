@@ -10,11 +10,13 @@ const MAP = {
   ready: 'suggest', packed: 'suggest', approved: 'suggest', in_transit: 'warn',
   warning: 'warn', demand_spike: 'warn',
   info: 'ok', overstock: 'ok',
+  return: 'suggest',
 }
 
 const TEXT = {
   low_stock: 'Low stock', out_of_stock: 'Out of stock', overstock: 'Overstock',
   demand_spike: 'Demand spike', in_transit: 'In transit', out_of: 'Out',
+  return: 'Return',
 }
 
 export default function StatusPill({ status, children }) {

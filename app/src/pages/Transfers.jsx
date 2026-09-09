@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../state/store.jsx'
 import { useScope } from '../lib/scope'
 import { useBranchFilter } from '../state/branchFilter.jsx'
@@ -9,6 +9,7 @@ import { branchName } from '../data/branches'
 import { timeAgo } from '../lib/scope'
 import StatusPill from '../components/StatusPill.jsx'
 import Icon from '../components/Icon.jsx'
+import Pagination from '../components/Pagination.jsx'
 
 const COLUMNS = [
   { key: 'suggested', label: 'Suggested' },
@@ -19,6 +20,7 @@ const COLUMNS = [
 ]
 
 const NEXT_LABEL = TRANSFER_NEXT_LABEL
+const STATUS_FILTERS = ['All', 'Suggested', 'Accepted']
 
 export default function Transfers() {
   const { state, dispatch } = useStore()
@@ -26,18 +28,38 @@ export default function Transfers() {
   const { branchId: filterBranch } = useBranchFilter()
   const effectiveBranch = isAll ? filterBranch : staff.branchId
 
-  const touches = (t) => !effectiveBranch || t.fromBranchId === effectiveBranch || t.toBranchId === effectiveBranch
+  const [q, setQ] = useState('')
+  const [statusFilter, setStatusFilter] = useState('All')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(25)
 
-  const suggestions = useMemo(
-    () => computeTransferSuggestions(state.stockLevels, state.transfers).filter(touches),
-    [state.stockLevels, state.transfers, effectiveBranch]
-  )
-  const transfers = state.transfers.filter(touches)
+  const touches = (t) => !effectiveBranch || t.fromBranchId === effectiveBranch || t.toBranchId === effectiveBranch
 
   function name(t) {
     const p = productOf(t.sku)
     return t.size && t.size !== 'One Size' ? `${p?.name ?? t.sku} (${t.size})` : p?.name ?? t.sku
   }
+
+  const allSuggestions = useMemo(
+    () => computeTransferSuggestions(state.stockLevels, state.transfers).filter(touches),
+    [state.stockLevels, state.transfers, effectiveBranch]
+  )
+
+  // Live search + status narrow the same set the pager slices, so a search
+  // never has to look past a page boundary to find what it's after — this
+  // is the pattern every list in the app follows, since any of these can
+  // realistically grow into hundreds or thousands of rows off a real DB.
+  const suggestions = useMemo(() => {
+    const needle = q.trim().toLowerCase()
+    return allSuggestions
+      .filter((s) => statusFilter === 'All' || (statusFilter === 'Accepted' ? s.linkedTransfer : !s.linkedTransfer))
+      .filter((s) => !needle || name({ sku: s.sku, size: s.size }).toLowerCase().includes(needle) || s.sku.toLowerCase().includes(needle))
+  }, [allSuggestions, q, statusFilter])
+
+  useEffect(() => setPage(1), [q, statusFilter, effectiveBranch, pageSize])
+  const pageSuggestions = suggestions.slice((page - 1) * pageSize, page * pageSize)
+
+  const transfers = state.transfers.filter(touches)
 
   const stamp = () => new Date().toISOString().slice(0, 10)
 
@@ -72,43 +94,53 @@ export default function Transfers() {
         </div>
       </div>
 
-      {suggestions.length > 0 && (
-        <section>
-          <div className="section-head">
-            <h3>System suggestions</h3>
-            <span className="muted">{suggestions.length}</span>
-          </div>
-          {suggestions.map((s) => {
-            const linked = s.linkedTransfer
-            return (
-              <div key={s.id} className="alert alert-suggestion">
-                <StatusPill status={linked?.status ?? 'suggested'}>
-                  {!linked ? 'Suggested' : linked.status === 'requested' ? 'Accepted' : linked.status.replace('_', ' ')}
-                </StatusPill>
-                <div className="body">
-                  <p>
-                    {(linked?.qty ?? s.qty)}&times; {name({ sku: s.sku, size: s.size })} — {branchName(s.fromBranchId)} &rarr; {branchName(s.toBranchId)}
-                  </p>
-                  <p className="meta">
-                    {branchName(s.fromBranchId)}: {s.reasonFrom} · {branchName(s.toBranchId)}: {s.reasonTo}
-                  </p>
-                </div>
-                {linked ? (
-                  NEXT_LABEL[linked.status] && (
-                    <button className="btn-small btn-xs" onClick={() => dispatch({ type: 'ADVANCE_TRANSFER', transferId: linked.id })}>
-                      {NEXT_LABEL[linked.status]}
-                    </button>
-                  )
-                ) : (
-                  <button className="btn-small" onClick={() => dispatch({ type: 'ACCEPT_SUGGESTION', suggestion: s })}>
-                    Accept
-                  </button>
-                )}
+      <section>
+        <div className="section-head">
+          <h3>System suggestions</h3>
+          <span className="muted">{suggestions.length}</span>
+        </div>
+
+        <div className="toolbar">
+          <input className="input" placeholder="Search product or SKU…" value={q} onChange={(e) => setQ(e.target.value)} style={{ minWidth: 200 }} />
+          {STATUS_FILTERS.map((s) => (
+            <button key={s} className={'chip' + (statusFilter === s ? ' chip-active' : '')} onClick={() => setStatusFilter(s)}>
+              {s}
+            </button>
+          ))}
+        </div>
+
+        {pageSuggestions.map((s) => {
+          const linked = s.linkedTransfer
+          return (
+            <div key={s.id} className="alert alert-suggestion">
+              <StatusPill status={linked?.status ?? 'suggested'}>
+                {!linked ? 'Suggested' : linked.status === 'requested' ? 'Accepted' : linked.status.replace('_', ' ')}
+              </StatusPill>
+              <div className="body">
+                <p>
+                  {(linked?.qty ?? s.qty)}&times; {name({ sku: s.sku, size: s.size })} — {branchName(s.fromBranchId)} &rarr; {branchName(s.toBranchId)}
+                </p>
+                <p className="meta">
+                  {branchName(s.fromBranchId)}: {s.reasonFrom} · {branchName(s.toBranchId)}: {s.reasonTo}
+                </p>
               </div>
-            )
-          })}
-        </section>
-      )}
+              {linked ? (
+                NEXT_LABEL[linked.status] && (
+                  <button className="btn-small btn-xs" onClick={() => dispatch({ type: 'ADVANCE_TRANSFER', transferId: linked.id })}>
+                    {NEXT_LABEL[linked.status]}
+                  </button>
+                )
+              ) : (
+                <button className="btn-small" onClick={() => dispatch({ type: 'ACCEPT_SUGGESTION', suggestion: s })}>
+                  Accept
+                </button>
+              )}
+            </div>
+          )
+        })}
+        {suggestions.length === 0 && <p className="muted">No suggestions match.</p>}
+        {suggestions.length > 0 && <Pagination page={page} pageSize={pageSize} total={suggestions.length} onPage={setPage} onPageSize={setPageSize} />}
+      </section>
 
       <div className="kanban">
         {COLUMNS.map((col) => {

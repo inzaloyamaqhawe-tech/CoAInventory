@@ -37,16 +37,23 @@ const CATEGORY_PROFILE = {
   Skirts: { wh: [2, 6], reorder: 1 },
 }
 
-// 9% of retail lines run low/out (and are, definitionally, still selling —
+// ~1% of retail lines run low/out (and are, definitionally, still selling —
 // that's why they're low), 7% sit deliberately overstocked (and definitionally
 // aren't selling — that's why nobody's reordered them down), the rest are
-// healthy with an occasional cold spell. Tuned so the alert feed stays a
-// short, credible list rather than a wall of hundreds of simultaneous
-// "critical" rows.
+// healthy with an occasional cold spell.
+//
+// The low-tier rate is the one number that actually controls how many
+// transfer suggestions show up: the warehouse buffer is generous enough
+// that it's a "surplus" source for almost every variant already, so a
+// suggestion fires the moment *any* retail branch dips low. At 9% low,
+// ~200 distinct variants meant 40-80 simultaneous suggestions — a wall of
+// "unread mail" on day one, not a short, credible list. At ~1%, only a
+// handful of lines are genuinely short at once, which both reads as real
+// signal and is a more honest picture of a well-run multi-branch shop.
 function retailLine(reorder) {
   const roll = rand()
-  if (roll < 0.09) return { qty: ri(0, reorder), tier: 'low' }
-  if (roll < 0.16) return { qty: ri(reorder * 4, reorder * 6), tier: 'over' }
+  if (roll < 0.01) return { qty: ri(0, reorder), tier: 'low' }
+  if (roll < 0.08) return { qty: ri(reorder * 4, reorder * 6), tier: 'over' }
   return { qty: ri(reorder + 1, reorder * 3), tier: 'healthy' }
 }
 
@@ -181,6 +188,7 @@ export function generateTasks() {
         assignedTo: s.id,
         status: done ? 'done' : rand() < 0.15 ? 'overdue' : 'pending',
         dueAt: daysAgo(done ? ri(0, 1) : 0),
+        assignedAt: daysAgo(ri(1, 5)),
         createdBy: s.branchId ? STAFF.find((m) => m.branchId === s.branchId && m.role === 'branch_manager')?.id ?? 'naledi' : 'naledi',
       })
     }

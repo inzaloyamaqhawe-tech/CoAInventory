@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStore } from '../state/store.jsx'
 import { useScope } from '../lib/scope'
@@ -9,6 +9,7 @@ import { timeAgo } from '../lib/scope'
 import StatusPill from '../components/StatusPill.jsx'
 import Icon from '../components/Icon.jsx'
 import ReassignControl from '../components/ReassignControl.jsx'
+import Pagination from '../components/Pagination.jsx'
 
 const FLOW = ['new', 'packed', 'ready', 'fulfilled']
 const NEXT_LABEL = { new: 'Mark packed', packed: 'Mark ready', ready: 'Mark fulfilled' }
@@ -40,8 +41,10 @@ export default function Orders() {
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
   const [assignFilter, setAssignFilter] = useState('All')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(25)
 
-  const orders = useMemo(() => {
+  const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase()
     return state.orders
       .filter((o) => !effectiveBranch || o.branchId === effectiveBranch)
@@ -52,6 +55,9 @@ export default function Orders() {
       // the queue so it actually gets picked up, not the newest arrival.
       .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
   }, [state.orders, effectiveBranch, statusFilter, assignFilter, q])
+
+  useEffect(() => setPage(1), [q, statusFilter, assignFilter, effectiveBranch, pageSize])
+  const orders = filtered.slice((page - 1) * pageSize, page * pageSize)
 
   function advance(order) {
     const idx = FLOW.indexOf(order.status)
@@ -80,14 +86,14 @@ export default function Orders() {
     return state.stockRequests.some((r) => r.orderId === order.id && r.variantSku === item.variantSku && r.status === 'open')
   }
 
-  const unassignedCount = orders.filter((o) => !o.assignedTo && o.status !== 'fulfilled').length
+  const unassignedCount = filtered.filter((o) => !o.assignedTo && o.status !== 'fulfilled').length
 
   return (
     <div className="page">
       <div className="page-head">
         <h1>Orders</h1>
         <p className="muted">
-          {effectiveBranch ? branchName(effectiveBranch) : 'All branches'} · {orders.length} shown, oldest first
+          {effectiveBranch ? branchName(effectiveBranch) : 'All branches'} · {filtered.length} order{filtered.length !== 1 ? 's' : ''}, oldest first
           {unassignedCount > 0 && <span className="text-critical"> · {unassignedCount} unassigned</span>}
         </p>
       </div>
@@ -187,7 +193,8 @@ export default function Orders() {
           </div>
         )
       })}
-      {orders.length === 0 && <p className="muted">No orders match.</p>}
+      {filtered.length === 0 && <p className="muted">No orders match.</p>}
+      {filtered.length > 0 && <Pagination page={page} pageSize={pageSize} total={filtered.length} onPage={setPage} onPageSize={setPageSize} />}
     </div>
   )
 }

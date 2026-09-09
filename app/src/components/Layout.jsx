@@ -19,8 +19,12 @@ export default function Layout({ children }) {
   const [moreOpen, setMoreOpen] = useState(false)
 
   const items = useMemo(() => NAV.filter((n) => n.roles.includes(staff.role)), [staff.role])
-  const primary = items.slice(0, 4)
-  const overflow = items.slice(4)
+  // Capped at 3, not 4 — a role with exactly 4 nav items (Sales Associate:
+  // Dashboard/Stock/Tasks/Orders) would otherwise fill every bottom-nav
+  // slot and leave no "More" button at all, which is also the only place
+  // Sign Out lives on a phone. The 5th slot is always More, always present.
+  const primary = items.slice(0, 3)
+  const overflow = items.slice(3)
 
   const alertCount = useMemo(() => {
     const all = computeAlerts(state.stockLevels)
@@ -100,12 +104,13 @@ export default function Layout({ children }) {
             <span>{labelFor(item)}</span>
           </NavLink>
         ))}
-        {overflow.length > 0 && (
-          <button className={'bottom-link' + (moreOpen ? ' active' : '')} onClick={() => setMoreOpen((v) => !v)}>
-            <Icon name="more" size={19} />
-            <span>More</span>
-          </button>
-        )}
+        {/* Always rendered, even if overflow is empty — this is the only
+            place Sign Out lives on a phone, so it can never be capped out
+            of existence by how many nav items a role happens to have. */}
+        <button className={'bottom-link' + (moreOpen ? ' active' : '')} onClick={() => setMoreOpen((v) => !v)}>
+          <Icon name="more" size={19} />
+          <span>More</span>
+        </button>
       </nav>
 
       {moreOpen && (

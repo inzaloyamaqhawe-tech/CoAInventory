@@ -18,7 +18,11 @@ function load() {
         ...o,
         items: o.items.map((it) => ({ pickedQty: 0, pickedBy: null, ...it })),
       }))
-      return { stockRequests: [], ...parsed, orders }
+      // Same guard for tasks — a browser can have tasks persisted from before
+      // assignment timestamps existed, and Team.jsx's "given at" column needs
+      // every task to have one.
+      const tasks = (parsed.tasks ?? []).map((t) => ({ assignedAt: t.dueAt ?? new Date().toISOString(), ...t }))
+      return { stockRequests: [], ...parsed, orders, tasks }
     }
   } catch {
     /* ignore corrupt storage, fall through to a fresh seed */
@@ -29,10 +33,18 @@ function load() {
 function reducer(state, action) {
   switch (action.type) {
     case 'ADJUST_STOCK': {
-      const { rowId, delta, note, performedBy } = action
-      const stockLevels = state.stockLevels.map((r) =>
-        r.id === rowId ? { ...r, qtyOnHand: Math.max(0, r.qtyOnHand + delta), lastCountedAt: new Date().toISOString() } : r
-      )
+      const { rowId, delta, note, performedBy, isReturn } = action
+      const returning = isReturn && delta > 0
+      const stockLevels = state.stockLevels.map((r) => {
+        if (r.id !== rowId) return r
+        const qtyOnHand = Math.max(0, r.qtyOnHand + delta)
+        // A customer return puts the item back on the shelf, but it was
+        // never actually sold-through — pull it back out of the sold-14d
+        // count too, or revenue/leaderboards/top-sellers keep crediting a
+        // sale that got reversed at the till.
+        const soldLast14d = returning ? Math.max(0, r.soldLast14d - delta) : r.soldLast14d
+        return { ...r, qtyOnHand, soldLast14d, lastCountedAt: new Date().toISOString() }
+      })
       const row = stockLevels.find((r) => r.id === rowId)
       const activity = [
         {
@@ -40,7 +52,7 @@ function reducer(state, action) {
           variantSku: row.variantSku,
           sku: row.sku,
           branchId: row.branchId,
-          type: delta >= 0 ? 'receive' : 'count_adjustment',
+          type: returning ? 'return' : delta >= 0 ? 'receive' : 'count_adjustment',
           qtyDelta: delta,
           performedBy,
           note,
@@ -53,6 +65,29 @@ function reducer(state, action) {
 
     case 'SET_TASK_STATUS': {
       const tasks = state.tasks.map((t) => (t.id === action.taskId ? { ...t, status: action.status } : t))
+      return { ...state, tasks }
+    }
+
+    // A manager moving a task to someone else — after they've confirmed the
+    // original assignee genuinely can't do it (see ReassignTaskModal). The
+    // new person gets a clean slate: a reassigned task is never handed over
+    // already marked done, and 'overdue' resets to 'pending' since that
+    // clock was never theirs to begin with.
+    case 'REASSIGN_TASK': {
+      const tasks = state.tasks.map((t) =>
+        t.id === action.taskId
+          ? {
+              ...t,
+              assignedTo: action.staffId,
+              status: t.status === 'overdue' ? 'pending' : t.status,
+              reassignNote: action.note ?? null,
+              // The handoff is a fresh assignment as far as the new person is
+              // concerned — the clock a manager tracks them by starts now, not
+              // whenever the original assignee first got it.
+              assignedAt: new Date().toISOString(),
+            }
+          : t
+      )
       return { ...state, tasks }
     }
 

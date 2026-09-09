@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CATALOG, CATEGORIES, formatZAR } from '../data/catalog'
 import { useStore } from '../state/store.jsx'
@@ -6,6 +6,7 @@ import { useBranchFilter } from '../state/branchFilter.jsx'
 import { swatchClass } from '../lib/derive'
 import StatusPill from '../components/StatusPill.jsx'
 import Icon from '../components/Icon.jsx'
+import Pagination from '../components/Pagination.jsx'
 
 export default function Products() {
   const { state } = useStore()
@@ -13,8 +14,10 @@ export default function Products() {
   const [q, setQ] = useState('')
   const [cat, setCat] = useState('All')
   const [view, setView] = useState('grid')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(25)
 
-  const rows = useMemo(() => {
+  const filtered = useMemo(() => {
     return CATALOG.filter((p) => (cat === 'All' || p.category === cat) && p.name.toLowerCase().includes(q.toLowerCase())).map((p) => {
       const variantSkus = p.variants.map((v) => v.variantSku)
       const stockRows = state.stockLevels.filter((r) => variantSkus.includes(r.variantSku) && (!branchId || r.branchId === branchId))
@@ -24,11 +27,16 @@ export default function Products() {
     })
   }, [q, cat, state.stockLevels, branchId])
 
+  useEffect(() => setPage(1), [q, cat, branchId, pageSize])
+  const rows = filtered.slice((page - 1) * pageSize, page * pageSize)
+
   return (
     <div className="page">
       <div className="page-head">
         <h1>Products</h1>
-        <p className="muted">{CATALOG.length} products across {CATEGORIES.length} categories · catalogue shared by every branch</p>
+        <p className="muted">
+          {filtered.length} of {CATALOG.length} products · catalogue shared by every branch
+        </p>
       </div>
 
       <div className="toolbar">
@@ -112,6 +120,9 @@ export default function Products() {
           </table>
         </div>
       )}
+
+      {filtered.length === 0 && <p className="muted">No products match.</p>}
+      {filtered.length > 0 && <Pagination page={page} pageSize={pageSize} total={filtered.length} onPage={setPage} onPageSize={setPageSize} />}
     </div>
   )
 }

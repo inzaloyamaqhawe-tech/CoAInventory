@@ -48,8 +48,8 @@ export default function Stock() {
     return null
   }
 
-  function confirmAdjust(delta, note) {
-    dispatch({ type: 'ADJUST_STOCK', rowId: adjusting.row.id, delta, performedBy: staff.id, note })
+  function confirmAdjust(delta, note, meta) {
+    dispatch({ type: 'ADJUST_STOCK', rowId: adjusting.row.id, delta, performedBy: staff.id, note, isReturn: meta?.isReturn })
     setAdjusting(null)
   }
 
