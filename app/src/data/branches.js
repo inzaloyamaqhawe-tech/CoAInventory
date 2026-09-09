@@ -30,6 +30,16 @@ export function branchName(id) {
   return BRANCHES.find((b) => b.id === id)?.name ?? id
 }
 
+// Who can actually be handed work at a given branch — the warehouse is run
+// by its stock controller, a shop floor by its own manager and associates.
+// Single source of truth for order assignment, task assignment and task
+// reassignment alike, so "Durban work never lands on a Sandton person" is
+// enforced the same way everywhere instead of three places that could drift.
+export function assignableStaffForBranch(branchId) {
+  if (branchId === 'WH') return STAFF.filter((s) => s.role === 'stock_controller')
+  return STAFF.filter((s) => s.branchId === branchId && (s.role === 'sales_associate' || s.role === 'branch_manager'))
+}
+
 export function staffName(id) {
   return STAFF.find((s) => s.id === id)?.name ?? id
 }

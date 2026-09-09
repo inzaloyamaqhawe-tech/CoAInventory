@@ -4,7 +4,7 @@ import { useStore } from '../state/store.jsx'
 import { useScope } from '../lib/scope'
 import { useBranchFilter } from '../state/branchFilter.jsx'
 import { productOf } from '../lib/derive'
-import { STAFF, branchName } from '../data/branches'
+import { STAFF, branchName, assignableStaffForBranch } from '../data/branches'
 import { timeAgo } from '../lib/scope'
 import StatusPill from '../components/StatusPill.jsx'
 import Icon from '../components/Icon.jsx'
@@ -20,15 +20,6 @@ const STATUSES = [
   { key: 'ready', label: 'Ready' },
   { key: 'fulfilled', label: 'Fulfilled' },
 ]
-
-// Who an order at this branch can reasonably go to — that branch's floor
-// staff for a retail order, the stock controller for warehouse/online. A
-// Durban associate is never an option on a Sandton order — this is the only
-// list the reassign control is ever built from.
-function assignableStaff(branchId) {
-  if (branchId === 'WH') return STAFF.filter((s) => s.role === 'stock_controller')
-  return STAFF.filter((s) => s.branchId === branchId && (s.role === 'sales_associate' || s.role === 'branch_manager'))
-}
 
 export default function Orders() {
   const { state, dispatch } = useStore()
@@ -117,7 +108,7 @@ export default function Orders() {
         const owner = STAFF.find((s) => s.id === o.assignedTo)
         const isMine = o.assignedTo === staff.id
         const isDone = o.status === 'fulfilled'
-        const options = assignableStaff(o.branchId)
+        const options = assignableStaffForBranch(o.branchId)
 
         return (
           <div key={o.id} className={'order-card' + (!owner && !isDone ? ' order-unowned' : '')}>

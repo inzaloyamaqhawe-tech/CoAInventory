@@ -1,12 +1,13 @@
-import React, { useMemo, useState } from 'react'
+import React, { useState } from 'react'
 import { useStore } from '../state/store.jsx'
-import { useScope, timeAgo } from '../lib/scope'
+import { useScope } from '../lib/scope'
 import { useBranchFilter } from '../state/branchFilter.jsx'
 import { taskCompletion } from '../lib/derive'
-import { STAFF, ROLES, branchName } from '../data/branches'
+import { STAFF, ROLES, BRANCHES, branchName, assignableStaffForBranch } from '../data/branches'
 import StatusPill from '../components/StatusPill.jsx'
 import Icon from '../components/Icon.jsx'
 import ReassignTaskModal from '../components/ReassignTaskModal.jsx'
+import StaffTasksModal from '../components/StaffTasksModal.jsx'
 
 export default function Team() {
   const { state, dispatch } = useStore()
@@ -16,20 +17,24 @@ export default function Team() {
   const isAssociate = staff.role === 'sales_associate'
 
   const [newTitle, setNewTitle] = useState('')
+  const [newLocation, setNewLocation] = useState(effectiveBranch || '')
   const [newFor, setNewFor] = useState('')
   const [reassigning, setReassigning] = useState(null) // task | null
-  const [focusStaffId, setFocusStaffId] = useState(null) // clicked a name in Staff → filters Tasks below
+  const [viewingStaffId, setViewingStaffId] = useState(null) // clicked a name in Staff → opens their tasks
 
-  const people = STAFF.filter((s) => s.role !== 'ops_manager' && s.role !== 'stock_controller' && (!effectiveBranch || s.branchId === effectiveBranch))
+  // The roster shown, and who a new task can go to, are both built off the
+  // same branch-scoping rule as order assignment (assignableStaffForBranch)
+  // — a Sandton associate is never an option once a task's location isn't
+  // Sandton, and never shows up in the roster for a branch that isn't theirs.
+  const rosterBranchIds = effectiveBranch ? [effectiveBranch] : BRANCHES.map((b) => b.id)
+  const people = rosterBranchIds.flatMap(assignableStaffForBranch)
 
   const myTasks = state.tasks.filter((t) => t.assignedTo === staff.id)
-  const branchTasks = state.tasks.filter((t) => (effectiveBranch ? t.branchId === effectiveBranch : true))
-  const teamTasks = useMemo(
-    () =>
-      [...branchTasks].sort((a, b) => new Date(b.assignedAt ?? b.dueAt) - new Date(a.assignedAt ?? a.dueAt)).filter((t) => !focusStaffId || t.assignedTo === focusStaffId),
-    [branchTasks, focusStaffId]
-  )
-  const focusPerson = focusStaffId ? STAFF.find((s) => s.id === focusStaffId) : null
+
+  const locationOptions = isAll ? BRANCHES : BRANCHES.filter((b) => b.id === staff.branchId)
+  const assignOptions = newLocation ? assignableStaffForBranch(newLocation) : []
+  const validTask = newTitle.trim() && newLocation && newFor
+  const viewingPerson = viewingStaffId ? STAFF.find((s) => s.id === viewingStaffId) : null
 
   // A task is only ever completed by whoever it's assigned to — this is
   // the single toggle used everywhere, and it silently refuses to touch a
@@ -52,16 +57,15 @@ export default function Team() {
 
   function addTask(e) {
     e.preventDefault()
-    if (!newTitle.trim() || !newFor) return
-    const person = STAFF.find((s) => s.id === newFor)
+    if (!validTask) return // no title, no location, or no one to hand it to — never save half a task
     dispatch({
       type: 'ADD_TASK',
       task: {
         id: `TSK-${Date.now()}`,
         title: newTitle.trim(),
         type: 'daily',
-        branchId: person.branchId,
-        assignedTo: person.id,
+        branchId: newLocation,
+        assignedTo: newFor,
         status: 'pending',
         dueAt: new Date().toISOString(),
         assignedAt: new Date().toISOString(),
@@ -84,7 +88,7 @@ export default function Team() {
             <span className="check">{t.status === 'done' && <Icon name="check" size={12} />}</span>
             <div>
               <div className="name">{t.title}</div>
-              <div className="sub">{t.type}</div>
+              <div className="sub">{branchName(t.branchId)}</div>
             </div>
             <StatusPill status={t.status} />
           </div>
@@ -104,18 +108,12 @@ export default function Team() {
       <section>
         <div className="section-head">
           <h3>Staff</h3>
-          <span className="muted small">Click a name to see just their tasks</span>
+          <span className="muted small">Click a name to see their tasks</span>
         </div>
         {people.map((p) => {
           const c = taskCompletion(state.tasks, (t) => t.assignedTo === p.id)
-          const isFocused = focusStaffId === p.id
           return (
-            <button
-              key={p.id}
-              type="button"
-              className={'row-card row-card-clickable' + (isFocused ? ' row-card-active' : '')}
-              onClick={() => setFocusStaffId(isFocused ? null : p.id)}
-            >
+            <button key={p.id} type="button" className="row-card row-card-clickable" onClick={() => setViewingStaffId(p.id)}>
               <div className="who">
                 <span className="avatar">{p.initials}</span>
                 <span>
@@ -131,80 +129,72 @@ export default function Team() {
             </button>
           )
         })}
+        {people.length === 0 && <p className="muted">No staff at this branch.</p>}
       </section>
 
       <section>
         <div className="section-head">
-          <h3>{focusPerson ? `Tasks — ${focusPerson.name}` : 'Tasks'}</h3>
-          {focusPerson ? (
-            <button className="btn-small btn-ghost btn-xs" onClick={() => setFocusStaffId(null)}>
-              <Icon name="x" size={11} /> Clear, show everyone
-            </button>
-          ) : (
-            <span className="muted small">Newest assignment first</span>
-          )}
+          <h3>Assign a new task</h3>
         </div>
-        {teamTasks.map((t) => {
-          const isMine = t.assignedTo === staff.id
-          return (
-            <div key={t.id}>
-              <div
-                className={'task-row' + (t.status === 'done' ? ' done' : '') + (isMine ? '' : ' task-row-readonly')}
-                onClick={() => toggle(t)}
-              >
-                <span className="check">{t.status === 'done' && <Icon name="check" size={12} />}</span>
-                <div>
-                  <div className="name">{t.title}</div>
-                  <div className="sub">
-                    {focusPerson ? branchName(t.branchId) : `${STAFF.find((s) => s.id === t.assignedTo)?.name ?? '—'} · ${branchName(t.branchId)}`}
-                    {' · Given '}
-                    {timeAgo(t.assignedAt ?? t.dueAt)}
-                  </div>
-                </div>
-                {!isMine && t.status !== 'done' && (
-                  <button
-                    className="btn-small btn-ghost btn-xs"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setReassigning(t)
-                    }}
-                  >
-                    Reassign
-                  </button>
-                )}
-                <StatusPill status={t.status} />
-              </div>
-              {t.reassignNote && (
-                <div className="handoff-note" style={{ marginTop: -4, marginBottom: 8 }}>
-                  <Icon name="bell" size={13} />
-                  <span>{t.reassignNote}</span>
-                </div>
-              )}
-            </div>
-          )
-        })}
-        {teamTasks.length === 0 && <p className="muted">{focusPerson ? `Nothing assigned to ${focusPerson.name}.` : 'No tasks match.'}</p>}
-
         <form className="new-task-form" onSubmit={addTask}>
-          <input className="input" placeholder="New task…" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
-          <select className="input" value={newFor} onChange={(e) => setNewFor(e.target.value)}>
-            <option value="">Assign to…</option>
-            {people.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-          <button className="btn-small" type="submit">
-            Add
+          <div>
+            <span className="field-label">Task</span>
+            <input className="input" placeholder="e.g. Stock counting for jackets" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
+          </div>
+          <div>
+            <span className="field-label">Location</span>
+            <select
+              className="input"
+              value={newLocation}
+              onChange={(e) => {
+                setNewLocation(e.target.value)
+                setNewFor('') // last branch's assignee is never valid for a different one
+              }}
+              disabled={locationOptions.length <= 1}
+            >
+              <option value="">Choose a branch…</option>
+              {locationOptions.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <span className="field-label">Assigned to</span>
+            <select className="input" value={newFor} onChange={(e) => setNewFor(e.target.value)} disabled={!newLocation}>
+              <option value="">{newLocation ? 'Choose someone…' : 'Pick a location first'}</option>
+              {assignOptions.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button className="btn-small" type="submit" disabled={!validTask}>
+            Add task
           </button>
         </form>
+        <p className="muted small" style={{ marginTop: 6 }}>
+          A task needs a location and someone at that location before it can be saved — that's what keeps a Gateway task from ever landing on a Sandton associate.
+        </p>
       </section>
+
+      {viewingPerson && (
+        <StaffTasksModal
+          person={viewingPerson}
+          tasks={state.tasks.filter((t) => t.assignedTo === viewingPerson.id)}
+          currentStaffId={staff.id}
+          onToggle={toggle}
+          onReassign={(task) => setReassigning(task)}
+          onClose={() => setViewingStaffId(null)}
+        />
+      )}
 
       {reassigning && (
         <ReassignTaskModal
           task={reassigning}
-          options={people.filter((p) => p.id !== reassigning.assignedTo)}
+          options={assignableStaffForBranch(reassigning.branchId).filter((p) => p.id !== reassigning.assignedTo)}
           onClose={() => setReassigning(null)}
           onConfirm={confirmReassign}
         />
