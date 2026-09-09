@@ -162,12 +162,20 @@ export default function Orders() {
               {o.items.map((it, i) => {
                 const p = productOf(it.sku)
                 const requested = alreadyRequested(o, it)
+                // Same "short" math as OrderDetail's own line-by-line check —
+                // only an item this branch genuinely can't cover right now
+                // gets a request action; one that's fully on hand shouldn't
+                // invite a request nobody needs to make.
+                const ownRow = state.stockLevels.find((r) => r.variantSku === it.variantSku && r.branchId === o.branchId)
+                const short = Math.max(0, it.qty - (ownRow?.qtyOnHand ?? 0))
                 return (
                   <div key={i} className="order-item-row">
                     <span>
                       {it.qty}&times; {p?.name ?? it.sku}
                     </span>
                     {isAssociate &&
+                      !isDone &&
+                      short > 0 &&
                       (requested ? (
                         <span className="pill pill-suggest">Requested</span>
                       ) : (

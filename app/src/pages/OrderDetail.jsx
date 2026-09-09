@@ -4,7 +4,7 @@ import { useStore } from '../state/store.jsx'
 import { useScope } from '../lib/scope'
 import { productOf } from '../lib/derive'
 import { recommendSourceBranch } from '../lib/alerts'
-import { STAFF, branchName, staffName } from '../data/branches'
+import { STAFF, branchName, staffName, assignableStaffForBranch } from '../data/branches'
 import { timeAgo } from '../lib/scope'
 import StatusPill from '../components/StatusPill.jsx'
 import Icon from '../components/Icon.jsx'
@@ -13,11 +13,6 @@ import RecordPickedModal from '../components/RecordPickedModal.jsx'
 
 const FLOW = ['new', 'packed', 'ready', 'fulfilled']
 const NEXT_LABEL = { new: 'Mark packed', packed: 'Mark ready', ready: 'Mark fulfilled' }
-
-function assignableStaff(branchId) {
-  if (branchId === 'WH') return STAFF.filter((s) => s.role === 'stock_controller')
-  return STAFF.filter((s) => s.branchId === branchId && (s.role === 'sales_associate' || s.role === 'branch_manager'))
-}
 
 export default function OrderDetail() {
   const { id } = useParams()
@@ -60,7 +55,7 @@ export default function OrderDetail() {
 
   const owner = STAFF.find((s) => s.id === order.assignedTo)
   const canFulfil = lines.every((l) => l.short === 0)
-  const options = assignableStaff(order.branchId)
+  const options = assignableStaffForBranch(order.branchId)
   const isDone = order.status === 'fulfilled'
   // The assigned person does their own picking; a manager can step in too
   // (covering, correcting a miscount) — nobody else touches someone else's order.
@@ -204,7 +199,7 @@ export default function OrderDetail() {
               )}
             </div>
 
-            {l.short > 0 && (
+            {!isDone && l.short > 0 && (
               <div className="fulfil-reco">
                 {l.recommendation ? (
                   <>
