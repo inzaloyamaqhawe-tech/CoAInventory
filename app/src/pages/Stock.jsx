@@ -54,7 +54,7 @@ export default function Stock() {
   }
 
   function exportRows() {
-    const header = ['Product', 'SKU', 'Size', 'Branch', 'On hand', 'Reorder at', 'Sold 14d', 'Status']
+    const header = ['Product', 'SKU', 'Size', 'Branch', 'On hand', 'Reorder point', 'Sold 14d', 'Status']
     return filtered.map(({ row, product }) => [
       product.name,
       row.variantSku,
@@ -70,11 +70,11 @@ export default function Stock() {
   const scopeLabel = effectiveBranch ? branchName(effectiveBranch) : 'all-branches'
 
   function toExcel() {
-    const header = ['Product', 'SKU', 'Size', 'Branch', 'On hand', 'Reorder at', 'Sold 14d', 'Status']
+    const header = ['Product', 'SKU', 'Size', 'Branch', 'On hand', 'Reorder point', 'Sold 14d', 'Status']
     exportExcel(`stock-${scopeLabel}-${stamp()}.xlsx`, 'Stock', header, exportRows())
   }
   function toPDF() {
-    const header = ['Product', 'SKU', 'Size', 'Branch', 'On hand', 'Reorder', 'Sold 14d', 'Status']
+    const header = ['Product', 'SKU', 'Size', 'Branch', 'On hand', 'Reorder point', 'Sold 14d', 'Status']
     exportPDF({
       title: 'Stock Report',
       subtitle: effectiveBranch ? branchName(effectiveBranch) : 'All branches',
@@ -103,7 +103,7 @@ export default function Stock() {
       title: 'Shortage Report',
       subtitle: effectiveBranch ? branchName(effectiveBranch) : 'All branches',
       meta: `${shortageRows.length} lines at or below reorder point`,
-      headerRow: ['Product', 'SKU', 'Size', 'Branch', 'On hand', 'Reorder at', 'Short by'],
+      headerRow: ['Product', 'SKU', 'Size', 'Branch', 'On hand', 'Reorder point', 'Short by'],
       rows: shortageRows.map(({ row, product }) => [
         product.name,
         row.variantSku,
@@ -159,7 +159,11 @@ export default function Stock() {
               <th>Size</th>
               {!effectiveBranch && <th>Branch</th>}
               <th>On hand</th>
-              <th>Reorder at</th>
+              <th title="Reorder point — the line is flagged Low stock once On hand drops to this number or below it">
+                <span className="th-help">
+                  Reorder point <Icon name="help" size={11} />
+                </span>
+              </th>
               <th>Sold, 14d</th>
               <th>Cover</th>
               <th>Status</th>

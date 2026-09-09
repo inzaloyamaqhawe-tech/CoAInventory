@@ -308,6 +308,12 @@ a, a:link, a:visited, a:hover, a:active { color: inherit; text-decoration: none;
 .table tbody tr:nth-child(even) { background: var(--bg); } /* zebra striping — easier to track a row across a wide, dense table */
 .table tbody tr:hover { background: var(--surface-2); }
 .table-name { font-weight: 600; }
+/* A column header whose meaning isn't obvious from the word alone (what
+   does "Reorder point" actually trigger?) gets an inline hint icon and a
+   native tooltip on hover — cheap, no extra component, matches the
+   title="…" pattern already used on the Shortage Report button. */
+.th-help { display: inline-flex; align-items: center; gap: 4px; cursor: help; }
+.th-help svg { color: var(--muted); opacity: 0.7; }
 .table-name:hover { text-decoration: underline; }
 .strong { font-weight: 700; }
 .strike { text-decoration: line-through; color: var(--muted); }

@@ -20,6 +20,7 @@ const PATHS = {
   printer: '<path d="M6 9V4h12v5"/><rect x="4" y="9" width="16" height="7" rx="1.5"/><path d="M7 14h10v6H7z"/><path d="M8 12h.01"/>',
   download: '<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 20h16"/>',
   x: '<path d="M6 6l12 12"/><path d="M18 6L6 18"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 014.8 1c0 1.7-2.3 1.9-2.3 3.5"/><circle cx="12" cy="17" r="0.1" fill="currentColor" stroke="none"/>',
 }
 
 export default function Icon({ name, size = 18, className }) {
