@@ -3,7 +3,7 @@ import Modal from './Modal.jsx'
 import Icon from './Icon.jsx'
 import StatusPill from './StatusPill.jsx'
 import { ROLES, branchName } from '../data/branches'
-import { timeAgo } from '../lib/scope'
+import { formatGivenAt } from '../lib/scope'
 
 // Clicking a name on Team & Tasks opens this instead of a second list on
 // the page — it's the one place that shows what a specific person has on,
@@ -26,7 +26,7 @@ export default function StaffTasksModal({ person, tasks, currentStaffId, onToggl
             <div>
               <div className="name">{t.title}</div>
               <div className="sub">
-                {branchName(t.branchId)} · Given {timeAgo(t.assignedAt ?? t.dueAt)}
+                {branchName(t.branchId)} · Given {formatGivenAt(t.assignedAt ?? t.dueAt)}
               </div>
             </div>
             {!isSelf && t.status !== 'done' && (

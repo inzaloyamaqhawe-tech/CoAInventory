@@ -4,6 +4,7 @@ import { useStore } from '../state/store.jsx'
 import { useScope } from '../lib/scope'
 import { useBranchFilter } from '../state/branchFilter.jsx'
 import { productOf } from '../lib/derive'
+import { recommendSourceBranch } from '../lib/alerts'
 import { STAFF, branchName, assignableStaffForBranch } from '../data/branches'
 import { timeAgo } from '../lib/scope'
 import StatusPill from '../components/StatusPill.jsx'
@@ -62,14 +63,20 @@ export default function Orders() {
 
   function requestStock(order, item) {
     const product = productOf(item.sku)
+    // A request needs a recommended source branch the moment it's raised —
+    // without it, all a manager can do with it later is Dismiss. Same
+    // recommendation OrderDetail's own Request button uses.
+    const rec = recommendSourceBranch(state.stockLevels, item.variantSku, item.qty, order.branchId)
     dispatch({
       type: 'REQUEST_STOCK',
       sku: item.sku,
       variantSku: item.variantSku,
       branchId: order.branchId,
       orderId: order.id,
+      qty: item.qty,
       requestedBy: staff.id,
       note: `Short for ${order.id} (${order.customer}) — need ${item.qty}× ${product?.name ?? item.sku}.`,
+      suggestedFromBranchId: rec?.row.branchId ?? null,
     })
   }
 

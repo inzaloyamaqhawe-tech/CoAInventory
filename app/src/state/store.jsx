@@ -69,9 +69,29 @@ function reducer(state, action) {
       return { ...state, stockLevels, activity }
     }
 
+    // Marking a task done (or un-marking it) is exactly the kind of "who did
+    // what, when" moment Reports exists to answer — it goes into the same
+    // activity feed as stock movements so one search covers both, instead
+    // of task completion only ever being visible as a checkmark that
+    // forgot who ticked it the moment the next person looks at the list.
     case 'SET_TASK_STATUS': {
+      const task = state.tasks.find((t) => t.id === action.taskId)
       const tasks = state.tasks.map((t) => (t.id === action.taskId ? { ...t, status: action.status } : t))
-      return { ...state, tasks }
+      if (!task) return { ...state, tasks }
+      const activity = [
+        {
+          id: `ACT-${Date.now()}`,
+          type: action.status === 'done' ? 'task_completed' : 'task_reopened',
+          taskId: task.id,
+          title: task.title,
+          branchId: task.branchId,
+          performedBy: action.performedBy ?? task.assignedTo,
+          note: null,
+          at: new Date().toISOString(),
+        },
+        ...state.activity,
+      ]
+      return { ...state, tasks, activity }
     }
 
     // A manager moving a task to someone else — after they've confirmed the
@@ -200,16 +220,21 @@ function reducer(state, action) {
       return { ...state, stockRequests: [request, ...state.stockRequests] }
     }
 
-    // Manager turns a staff request into a real transfer, sourced from the
-    // branch it recommended — one action instead of re-deriving the move.
+    // Manager turns a staff request into a real transfer — normally sourced
+    // from the branch the system recommended (one action, no re-deriving),
+    // but `fromBranchId` lets a manager override that with their own pick
+    // when the system found no clear recommendation at all (nothing had
+    // spare stock above its own reorder point) yet the manager knows a
+    // branch that can still spare a few units.
     case 'ACCEPT_REQUEST': {
       const { request } = action
-      if (!request.suggestedFromBranchId) return state
+      const fromBranchId = action.fromBranchId ?? request.suggestedFromBranchId
+      if (!fromBranchId) return state
       const transfer = {
         id: `TR-2026-${Math.floor(Math.random() * 900 + 100)}`,
         sku: request.sku,
         variantSku: request.variantSku,
-        fromBranchId: request.suggestedFromBranchId,
+        fromBranchId,
         toBranchId: request.branchId,
         qty: request.qty,
         status: 'requested',

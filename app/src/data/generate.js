@@ -6,6 +6,7 @@
 
 import { CATALOG } from './catalog'
 import { BRANCHES, STAFF } from './branches'
+import { recommendSourceBranch } from '../lib/alerts'
 
 function mulberry32(seed) {
   let a = seed
@@ -24,7 +25,7 @@ function mulberry32(seed) {
 // data away instead of quietly keeping serving whatever tier probabilities
 // were live the day they first opened the app. Without this, editing this
 // file only ever affects a brand-new browser profile.
-export const DATA_VERSION = 3
+export const DATA_VERSION = 4
 
 const rand = mulberry32(20260908)
 const ri = (min, max) => Math.floor(rand() * (max - min + 1)) + min
@@ -271,12 +272,15 @@ function generateStockRequests(orders, stockLevels) {
     const item = o.items[0]
     const row = rowByVariant(item.variantSku, o.branchId)
     const associate = STAFF.find((s) => s.branchId === o.branchId && s.role === 'sales_associate')
+    const rec = recommendSourceBranch(stockLevels, item.variantSku, item.qty, o.branchId)
     return {
       id: `REQ-${100 + i}`,
       sku: item.sku,
       variantSku: item.variantSku,
       branchId: o.branchId,
       orderId: o.id,
+      qty: item.qty,
+      suggestedFromBranchId: rec?.row.branchId ?? null,
       requestedBy: associate?.id ?? 'naledi',
       note: `Customer wants it for ${o.customer}, only ${row?.qtyOnHand ?? 0} on hand here.`,
       status: 'open',

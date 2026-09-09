@@ -204,6 +204,7 @@ a, a:link, a:visited, a:hover, a:active { color: inherit; text-decoration: none;
 .avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; flex: none; }
 .who .n { display: block; font-size: 13px; font-weight: 600; }
 .who .r { display: block; font-size: 11px; color: var(--muted); text-transform: capitalize; }
+.who .report-meta { text-transform: none; } /* a log line ("Amahle · Sandton · Today, 13:21 · note") reads oddly Title-Cased */
 
 /* ---------- page basics ---------- */
 @keyframes page-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -287,9 +288,20 @@ a, a:link, a:visited, a:hover, a:active { color: inherit; text-decoration: none;
 .stepper button:hover:not(:disabled) { background: var(--surface-2); }
 
 /* ---------- tables ---------- */
-.table-wrap { overflow: auto; max-height: 62vh; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-sm); }
+/* A wide table needs its own horizontal scrollbar (CSS rule: setting
+   overflow-x to anything but visible forces overflow-y to behave as auto
+   too, whether or not you set it — there's no such thing as one axis
+   scrolling and the other truly "part of the page" on the same box). So
+   rather than fight that, this box is sized to actually fit the viewport
+   (nav bar and the page's own header/toolbar chrome subtracted out) —
+   short of a very tall monitor, the whole box is on screen at once, every
+   scroll gesture over it lands inside it, and its sticky thead (top:0,
+   i.e. the top of this box) stays put the entire time. Same visible
+   result as a page-level sticky header, without the two colliding.
+   min() keeps it from stretching absurdly tall on a big display. */
+.table-wrap { overflow: auto; max-height: min(620px, calc(100vh - 280px)); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-sm); }
 .table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.table thead { position: sticky; top: 0; z-index: 1; }
+.table thead { position: sticky; top: 0; z-index: 5; }
 .table th { text-align: left; font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); padding: 10px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; background: var(--surface); }
 .table td { padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 .table tbody tr:last-child td { border-bottom: none; }
@@ -344,9 +356,17 @@ a, a:link, a:visited, a:hover, a:active { color: inherit; text-decoration: none;
 }
 
 /* ---------- kanban ---------- */
-.kanban { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px; }
+/* align-items: flex-start (not the flex default of stretch) — otherwise
+   one column with 50 cards drags every other column's box down to match
+   its height, even though only that one column actually has anything to
+   show past the fold. Each column then scrolls its own cards independently
+   instead of pushing the whole page taller — a Received column with 400
+   entries in it should never be a reason Suggested's 2 cards sit inside a
+   4000px-tall box. */
+.kanban { display: flex; align-items: flex-start; gap: 12px; overflow-x: auto; padding-bottom: 6px; }
 .kanban-col { flex: 0 0 210px; }
 .kanban-col h4 { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: flex; justify-content: space-between; }
+.kanban-col-cards { max-height: 560px; overflow-y: auto; padding-right: 2px; }
 .tcard { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 11px; margin-bottom: 8px; }
 .tcard-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; }
 .tcard-print { flex: none; border: 1px solid var(--border); background: var(--bg); border-radius: 6px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; color: var(--muted); cursor: pointer; }

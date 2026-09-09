@@ -41,7 +41,7 @@ export default function Team() {
   // task that isn't the current person's own.
   function toggle(task) {
     if (task.assignedTo !== staff.id) return
-    dispatch({ type: 'SET_TASK_STATUS', taskId: task.id, status: task.status === 'done' ? 'pending' : 'done' })
+    dispatch({ type: 'SET_TASK_STATUS', taskId: task.id, status: task.status === 'done' ? 'pending' : 'done', performedBy: staff.id })
   }
 
   function confirmReassign(newStaffId, note) {

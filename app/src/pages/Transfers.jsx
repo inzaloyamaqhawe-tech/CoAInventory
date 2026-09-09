@@ -150,29 +150,31 @@ export default function Transfers() {
               <h4>
                 {col.label} <span>{items.length}</span>
               </h4>
-              {items.map((t) => (
-                <div key={t.id} className="tcard">
-                  <div className="tcard-top">
-                    <div className="tcard-name">{name(t)}</div>
-                    <button className="tcard-print" onClick={() => downloadNote(t)} aria-label="Download transfer note" title="Download transfer note (PDF)">
-                      <Icon name="download" size={13} />
-                    </button>
+              <div className="kanban-col-cards">
+                {items.map((t) => (
+                  <div key={t.id} className="tcard">
+                    <div className="tcard-top">
+                      <div className="tcard-name">{name(t)}</div>
+                      <button className="tcard-print" onClick={() => downloadNote(t)} aria-label="Download transfer note" title="Download transfer note (PDF)">
+                        <Icon name="download" size={13} />
+                      </button>
+                    </div>
+                    <div className="tcard-route">
+                      {branchName(t.fromBranchId)} &rarr; {branchName(t.toBranchId)}
+                    </div>
+                    <div className="tcard-reason">
+                      {t.qty} units · {timeAgo(t.createdAt)}
+                    </div>
+                    {t.reason && <div className="tcard-why">{t.reason}</div>}
+                    {NEXT_LABEL[t.status] && (
+                      <button className="btn-small btn-block" onClick={() => dispatch({ type: 'ADVANCE_TRANSFER', transferId: t.id })}>
+                        {NEXT_LABEL[t.status]}
+                      </button>
+                    )}
                   </div>
-                  <div className="tcard-route">
-                    {branchName(t.fromBranchId)} &rarr; {branchName(t.toBranchId)}
-                  </div>
-                  <div className="tcard-reason">
-                    {t.qty} units · {timeAgo(t.createdAt)}
-                  </div>
-                  {t.reason && <div className="tcard-why">{t.reason}</div>}
-                  {NEXT_LABEL[t.status] && (
-                    <button className="btn-small btn-block" onClick={() => dispatch({ type: 'ADVANCE_TRANSFER', transferId: t.id })}>
-                      {NEXT_LABEL[t.status]}
-                    </button>
-                  )}
-                </div>
-              ))}
-              {items.length === 0 && <div className="muted small">None right now</div>}
+                ))}
+                {items.length === 0 && <div className="muted small">None right now</div>}
+              </div>
             </div>
           )
         })}

@@ -5,13 +5,42 @@ import { useBranchFilter } from '../state/branchFilter.jsx'
 import { computeAlerts, computeTransferSuggestions, TRANSFER_NEXT_LABEL } from '../lib/alerts'
 import { productOf } from '../lib/derive'
 import { exportExcel, exportPDF } from '../lib/exportDocs'
-import { branchName, staffName } from '../data/branches'
+import { BRANCHES, branchName, staffName } from '../data/branches'
 import { timeAgo } from '../lib/scope'
 import StatusPill from '../components/StatusPill.jsx'
 import Pagination from '../components/Pagination.jsx'
 import Icon from '../components/Icon.jsx'
 
 const SEVERITIES = ['All', 'critical', 'warning', 'info']
+
+// The rare case where nothing cleared the bar to be an automatic
+// recommendation (no branch had spare stock above its own reorder point) —
+// Dismiss can't be the only option here either, so a manager gets a manual
+// pick of any other branch, shown with what it actually has on hand for
+// this exact variant so the choice is informed, not a blind guess.
+function ManualPullPicker({ request, stockLevels, onPull }) {
+  const [fromBranchId, setFromBranchId] = useState('')
+  const options = BRANCHES.filter((b) => b.id !== request.branchId).map((b) => {
+    const row = stockLevels.find((r) => r.variantSku === request.variantSku && r.branchId === b.id)
+    return { branch: b, qty: row?.qtyOnHand ?? 0 }
+  })
+
+  return (
+    <div style={{ display: 'flex', gap: 8 }}>
+      <select className="input" style={{ minWidth: 190 }} value={fromBranchId} onChange={(e) => setFromBranchId(e.target.value)}>
+        <option value="">No branch has spare — pull from…</option>
+        {options.map(({ branch, qty }) => (
+          <option key={branch.id} value={branch.id}>
+            {branch.name} ({qty} on hand)
+          </option>
+        ))}
+      </select>
+      <button className="btn-small btn-xs" disabled={!fromBranchId} onClick={() => onPull(fromBranchId)}>
+        Pull
+      </button>
+    </div>
+  )
+}
 
 export default function Alerts() {
   const { state, dispatch } = useStore()
@@ -116,11 +145,17 @@ export default function Alerts() {
                     )}
                   </p>
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {r.suggestedFromBranchId && (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  {r.suggestedFromBranchId ? (
                     <button className="btn-small btn-xs" onClick={() => dispatch({ type: 'ACCEPT_REQUEST', request: r })}>
                       Transfer from {branchName(r.suggestedFromBranchId)}
                     </button>
+                  ) : (
+                    <ManualPullPicker
+                      request={r}
+                      stockLevels={state.stockLevels}
+                      onPull={(fromBranchId) => dispatch({ type: 'ACCEPT_REQUEST', request: r, fromBranchId })}
+                    />
                   )}
                   <button className="btn-small btn-ghost btn-xs" onClick={() => dispatch({ type: 'RESOLVE_REQUEST', requestId: r.id })}>
                     Dismiss

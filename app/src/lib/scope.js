@@ -21,3 +21,21 @@ export function timeAgo(iso) {
   const days = Math.round(hrs / 24)
   return `${days}d ago`
 }
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+// A fixed calendar stamp rather than a relative "3d ago" — the point of
+// showing when a task was actually handed over is that it doesn't keep
+// changing its own wording as time passes. "Today, 09:34" if it happened
+// today, otherwise "09 Jul 2026, 12:08" — always day/month/year first,
+// 24-hour clock, so it never depends on the reader's locale to be unambiguous.
+export function formatGivenAt(iso) {
+  const d = new Date(iso)
+  const now = new Date()
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  const isToday = d.toDateString() === now.toDateString()
+  if (isToday) return `Today, ${hh}:${mm}`
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${day} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${hh}:${mm}`
+}

@@ -11,12 +11,15 @@ const MAP = {
   warning: 'warn', demand_spike: 'warn',
   info: 'ok', overstock: 'ok',
   return: 'suggest',
+  // activity-log event types (Reports)
+  receive: 'ok', sale: 'muted', count_adjustment: 'warn', task_completed: 'ok', task_reopened: 'muted',
 }
 
 const TEXT = {
   low_stock: 'Low stock', out_of_stock: 'Out of stock', overstock: 'Overstock',
   demand_spike: 'Demand spike', in_transit: 'In transit', out_of: 'Out',
   return: 'Return',
+  receive: 'Stock in', sale: 'Sale', count_adjustment: 'Adjustment', task_completed: 'Task done', task_reopened: 'Task reopened',
 }
 
 export default function StatusPill({ status, children }) {
