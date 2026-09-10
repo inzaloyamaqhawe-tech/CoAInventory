@@ -59,9 +59,30 @@ export default function App() {
             </Guarded>
           }
         />
-        <Route path="/team" element={<Team />} />
-        <Route path="/orders" element={<Orders />} />
-        <Route path="/orders/:id" element={<OrderDetail />} />
+        <Route
+          path="/team"
+          element={
+            <Guarded path="/team">
+              <Team />
+            </Guarded>
+          }
+        />
+        <Route
+          path="/orders"
+          element={
+            <Guarded path="/orders">
+              <Orders />
+            </Guarded>
+          }
+        />
+        <Route
+          path="/orders/:id"
+          element={
+            <Guarded path="/orders">
+              <OrderDetail />
+            </Guarded>
+          }
+        />
         <Route
           path="/branches"
           element={
