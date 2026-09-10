@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { useStore } from '../state/store.jsx'
+import { useScope } from '../lib/scope'
 import { STAFF, staffName } from '../data/branches'
 import { productOf } from '../lib/derive'
 import Icon from './Icon.jsx'
@@ -12,6 +13,7 @@ import Modal from './Modal.jsx'
 // decision, not a silent overwrite.
 export default function ReassignControl({ order, options }) {
   const { dispatch } = useStore()
+  const { staff } = useScope()
   const [pendingId, setPendingId] = useState(undefined) // undefined = no confirm open
 
   const owner = STAFF.find((s) => s.id === order.assignedTo)
@@ -24,7 +26,7 @@ export default function ReassignControl({ order, options }) {
     if (hasProgress && order.assignedTo) {
       setPendingId(newId) // ask first — someone's mid-pick on this order
     } else {
-      dispatch({ type: 'ASSIGN_ORDER', orderId: order.id, staffId: newId })
+      dispatch({ type: 'ASSIGN_ORDER', orderId: order.id, staffId: newId, performedBy: staff.id })
     }
   }
 
@@ -34,7 +36,7 @@ export default function ReassignControl({ order, options }) {
       .map((it) => `${it.pickedQty}/${it.qty}× ${productOf(it.sku)?.name ?? it.sku}`)
       .join(', ')
     const note = `${owner?.name ?? 'Previous assignee'} already picked ${lines} — check with them before continuing.`
-    dispatch({ type: 'ASSIGN_ORDER', orderId: order.id, staffId: pendingId, note })
+    dispatch({ type: 'ASSIGN_ORDER', orderId: order.id, staffId: pendingId, note, performedBy: staff.id })
     setPendingId(undefined)
   }
 

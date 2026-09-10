@@ -10,6 +10,7 @@ import { exportExcel, exportPDF } from '../lib/exportDocs'
 import StatusPill from '../components/StatusPill.jsx'
 import Pagination from '../components/Pagination.jsx'
 import AdjustStockModal from '../components/AdjustStockModal.jsx'
+import BulkAdjustModal from '../components/BulkAdjustModal.jsx'
 import Icon from '../components/Icon.jsx'
 
 export default function Stock() {
@@ -24,6 +25,8 @@ export default function Stock() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
   const [adjusting, setAdjusting] = useState(null) // { row, product } | null
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [bulkAdjusting, setBulkAdjusting] = useState(false)
 
   const filtered = useMemo(() => {
     return state.stockLevels
@@ -36,10 +39,42 @@ export default function Stock() {
   }, [state.stockLevels, effectiveBranch, cat, q, onlyAlerts])
 
   // Any filter change invalidates the current page — land back on page 1
-  // rather than showing an empty page 6 of a now-12-row result.
-  useEffect(() => setPage(1), [q, cat, onlyAlerts, effectiveBranch, pageSize])
+  // rather than showing an empty page 6 of a now-12-row result. A changed
+  // filter also invalidates whatever was selected — rows that just
+  // scrolled out of view shouldn't stay silently selected for a bulk
+  // action the operator can no longer see.
+  useEffect(() => {
+    setPage(1)
+    setSelectedIds(new Set())
+  }, [q, cat, onlyAlerts, effectiveBranch, pageSize])
 
   const pageRows = filtered.slice((page - 1) * pageSize, page * pageSize)
+  const selectedRows = pageRows.filter(({ row }) => selectedIds.has(row.id))
+  const allOnPageSelected = pageRows.length > 0 && pageRows.every(({ row }) => selectedIds.has(row.id))
+
+  function toggleRow(rowId) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(rowId)) next.delete(rowId)
+      else next.add(rowId)
+      return next
+    })
+  }
+
+  function toggleAllOnPage() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (allOnPageSelected) pageRows.forEach(({ row }) => next.delete(row.id))
+      else pageRows.forEach(({ row }) => next.add(row.id))
+      return next
+    })
+  }
+
+  function confirmBulkAdjust(delta, note, meta) {
+    dispatch({ type: 'BULK_ADJUST_STOCK', rowIds: selectedRows.map(({ row }) => row.id), delta, performedBy: staff.id, note, isReturn: meta?.isReturn })
+    setBulkAdjusting(false)
+    setSelectedIds(new Set())
+  }
 
   function status(row) {
     if (row.qtyOnHand === 0) return 'out_of_stock'
@@ -151,10 +186,25 @@ export default function Stock() {
         </div>
       </div>
 
+      {selectedIds.size > 0 && (
+        <div className="toolbar" style={{ background: 'var(--surface-2)', borderRadius: 'var(--radius)', padding: '8px 12px' }}>
+          <span className="mono small">{selectedIds.size} selected</span>
+          <button className="btn-small btn-xs" onClick={() => setBulkAdjusting(true)}>
+            <Icon name="tag" size={11} /> Bulk adjust
+          </button>
+          <button className="btn-small btn-ghost btn-xs" onClick={() => setSelectedIds(new Set())}>
+            Clear selection
+          </button>
+        </div>
+      )}
+
       <div className="table-wrap">
         <table className="table">
           <thead>
             <tr>
+              <th style={{ width: 32 }}>
+                <input type="checkbox" checked={allOnPageSelected} onChange={toggleAllOnPage} aria-label="Select all on this page" />
+              </th>
               <th>Product</th>
               <th>Size</th>
               {!effectiveBranch && <th>Branch</th>}
@@ -176,6 +226,9 @@ export default function Stock() {
               const cover = daysOfCover(row)
               return (
                 <tr key={row.id}>
+                  <td>
+                    <input type="checkbox" checked={selectedIds.has(row.id)} onChange={() => toggleRow(row.id)} aria-label={`Select ${product.name} (${row.size})`} />
+                  </td>
                   <td>{product.name}</td>
                   <td className="mono">{row.size}</td>
                   {!effectiveBranch && <td>{branchName(row.branchId)}</td>}
@@ -194,7 +247,7 @@ export default function Stock() {
             })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={9} className="muted" style={{ textAlign: 'center', padding: '24px 0' }}>
+                <td colSpan={10} className="muted" style={{ textAlign: 'center', padding: '24px 0' }}>
                   No lines match.
                 </td>
               </tr>
@@ -209,6 +262,10 @@ export default function Stock() {
 
       {adjusting && (
         <AdjustStockModal row={adjusting.row} product={adjusting.product} onClose={() => setAdjusting(null)} onConfirm={confirmAdjust} />
+      )}
+
+      {bulkAdjusting && (
+        <BulkAdjustModal rows={selectedRows} onClose={() => setBulkAdjusting(false)} onConfirm={confirmBulkAdjust} />
       )}
     </div>
   )

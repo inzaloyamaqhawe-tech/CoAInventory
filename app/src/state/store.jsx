@@ -28,7 +28,7 @@ function load() {
       // assignment timestamps existed, and Team.jsx's "given at" column needs
       // every task to have one.
       const tasks = (parsed.tasks ?? []).map((t) => ({ assignedAt: t.dueAt ?? new Date().toISOString(), ...t }))
-      return { stockRequests: [], ...parsed, orders, tasks }
+      return { stockRequests: [], seenIds: {}, ...parsed, orders, tasks }
     }
   } catch {
     /* ignore corrupt storage, fall through to a fresh seed */
@@ -67,6 +67,40 @@ function reducer(state, action) {
         ...state.activity,
       ]
       return { ...state, stockLevels, activity }
+    }
+
+    // Same rule as a single ADJUST_STOCK, applied to every selected line at
+    // once with one shared delta/note — a real delivery usually means the
+    // same qty landed across several sizes, not one row at a time. Still
+    // one activity entry per line, not one combined entry, so each line's
+    // own history in Reports/ProductDetail stays exactly as traceable as a
+    // single adjustment would have been.
+    case 'BULK_ADJUST_STOCK': {
+      const { rowIds, delta, note, performedBy, isReturn } = action
+      const returning = isReturn && delta > 0
+      const idSet = new Set(rowIds)
+      const stockLevels = state.stockLevels.map((r) => {
+        if (!idSet.has(r.id)) return r
+        const qtyOnHand = Math.max(0, r.qtyOnHand + delta)
+        const soldLast14d = returning ? Math.max(0, r.soldLast14d - delta) : r.soldLast14d
+        return { ...r, qtyOnHand, soldLast14d, lastCountedAt: new Date().toISOString() }
+      })
+      const now = Date.now()
+      const newEntries = rowIds.map((rowId, i) => {
+        const row = stockLevels.find((r) => r.id === rowId)
+        return {
+          id: `MV-${now}-${i}`,
+          variantSku: row.variantSku,
+          sku: row.sku,
+          branchId: row.branchId,
+          type: returning ? 'return' : delta >= 0 ? 'receive' : 'count_adjustment',
+          qtyDelta: delta,
+          performedBy,
+          note,
+          at: new Date().toISOString(),
+        }
+      })
+      return { ...state, stockLevels, activity: [...newEntries, ...state.activity] }
     }
 
     // Marking a task done (or un-marking it) is exactly the kind of "who did
@@ -121,20 +155,59 @@ function reducer(state, action) {
       return { ...state, tasks: [action.task, ...state.tasks] }
     }
 
+    // Same activity feed a stock adjustment or a task completion lands in —
+    // "who marked ORD-1044 packed, and when" belongs to the same searchable
+    // record, not just a status pill that stops meaning anything once the
+    // order moves past it.
     case 'SET_ORDER_STATUS': {
       const orders = state.orders.map((o) => (o.id === action.orderId ? { ...o, status: action.status } : o))
-      return { ...state, orders }
+      const order = state.orders.find((o) => o.id === action.orderId)
+      if (!order) return { ...state, orders }
+      const activity = [
+        {
+          id: `ACT-${Date.now()}`,
+          type: 'order_status',
+          orderId: order.id,
+          status: action.status,
+          branchId: order.branchId,
+          performedBy: action.performedBy ?? order.assignedTo,
+          note: null,
+          at: new Date().toISOString(),
+        },
+        ...state.activity,
+      ]
+      return { ...state, orders, activity }
     }
 
     // `note` carries handoff context when reassigning an order someone had
     // already started picking (see 05-DATA-MODEL.md's assignmentNote) — the
     // operator's own confirmation writes it, this just stores what it's told.
     // A clean reassignment (no note passed) clears any note left from before.
+    // Every assignment change — including the very first "unassigned → me"
+    // — is its own activity entry too, same reasoning as the status change
+    // above: who put this order in whose hands, and when, shouldn't only
+    // live as a note that the next reassignment quietly overwrites.
     case 'ASSIGN_ORDER': {
+      const order = state.orders.find((o) => o.id === action.orderId)
       const orders = state.orders.map((o) =>
         o.id === action.orderId ? { ...o, assignedTo: action.staffId, assignmentNote: action.note ?? null } : o
       )
-      return { ...state, orders }
+      if (!order) return { ...state, orders }
+      const activity = [
+        {
+          id: `ACT-${Date.now()}`,
+          type: 'order_reassigned',
+          orderId: order.id,
+          toStaffId: action.staffId,
+          fromStaffId: order.assignedTo,
+          branchId: order.branchId,
+          performedBy: action.performedBy ?? action.staffId,
+          note: action.note ?? null,
+          at: new Date().toISOString(),
+        },
+        ...state.activity,
+      ]
+      return { ...state, orders, activity }
     }
 
     // An associate (or a manager stepping in) marking units of one order
@@ -248,6 +321,22 @@ function reducer(state, action) {
     case 'RESOLVE_REQUEST': {
       const stockRequests = state.stockRequests.map((r) => (r.id === action.requestId ? { ...r, status: 'resolved' } : r))
       return { ...state, stockRequests }
+    }
+
+    case 'BULK_RESOLVE_REQUESTS': {
+      const ids = new Set(action.requestIds)
+      const stockRequests = state.stockRequests.map((r) => (ids.has(r.id) ? { ...r, status: 'resolved' } : r))
+      return { ...state, stockRequests }
+    }
+
+    // The bell badge's "unseen since last visit" count — keyed per staff
+    // member since this is a shared shop device several people sign into,
+    // not tracking one person's session. Opening Alerts marks everything
+    // currently in lib/alerts.js's notificationIds() as seen for whoever's
+    // signed in right now; anything raised after that shows up as new
+    // again next time, same as any other unread-count pattern.
+    case 'MARK_SEEN': {
+      return { ...state, seenIds: { ...state.seenIds, [action.staffId]: action.ids } }
     }
 
     case 'RESET_DEMO_DATA': {

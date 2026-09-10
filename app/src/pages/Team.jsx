@@ -9,6 +9,19 @@ import Icon from '../components/Icon.jsx'
 import ReassignTaskModal from '../components/ReassignTaskModal.jsx'
 import StaffTasksModal from '../components/StaffTasksModal.jsx'
 
+// A sensible starting point for a new task's due time — end of the same
+// working day, or tomorrow evening if it's already past that — rather than
+// making a manager type a date for every single task. `datetime-local`
+// wants the browser's own local wall-clock time, not UTC, so this builds
+// the string by hand instead of going through toISOString().
+function defaultDueLocal() {
+  const d = new Date()
+  if (d.getHours() >= 17) d.setDate(d.getDate() + 1)
+  d.setHours(17, 0, 0, 0)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 export default function Team() {
   const { state, dispatch } = useStore()
   const { staff, isAll } = useScope()
@@ -19,6 +32,7 @@ export default function Team() {
   const [newTitle, setNewTitle] = useState('')
   const [newLocation, setNewLocation] = useState(effectiveBranch || '')
   const [newFor, setNewFor] = useState('')
+  const [newDue, setNewDue] = useState(defaultDueLocal())
   const [reassigning, setReassigning] = useState(null) // task | null
   const [viewingStaffId, setViewingStaffId] = useState(null) // clicked a name in Staff → opens their tasks
 
@@ -67,13 +81,14 @@ export default function Team() {
         branchId: newLocation,
         assignedTo: newFor,
         status: 'pending',
-        dueAt: new Date().toISOString(),
         assignedAt: new Date().toISOString(),
+        dueAt: newDue ? new Date(newDue).toISOString() : new Date().toISOString(),
         createdBy: staff.id,
       },
     })
     setNewTitle('')
     setNewFor('')
+    setNewDue(defaultDueLocal())
   }
 
   if (isAssociate) {
@@ -171,6 +186,10 @@ export default function Team() {
               ))}
             </select>
           </div>
+          <div>
+            <span className="field-label">Due</span>
+            <input className="input" type="datetime-local" value={newDue} onChange={(e) => setNewDue(e.target.value)} />
+          </div>
           <button className="btn-small" type="submit" disabled={!validTask}>
             Add task
           </button>
@@ -195,6 +214,7 @@ export default function Team() {
         <ReassignTaskModal
           task={reassigning}
           options={assignableStaffForBranch(reassigning.branchId).filter((p) => p.id !== reassigning.assignedTo)}
+          currentStaffId={staff.id}
           onClose={() => setReassigning(null)}
           onConfirm={confirmReassign}
         />

@@ -9,24 +9,52 @@ import StatusPill from '../components/StatusPill.jsx'
 import Pagination from '../components/Pagination.jsx'
 import Icon from '../components/Icon.jsx'
 
-// Every stock movement and every task completion lands in state.activity —
-// this turns that raw record into one flat, searchable shape regardless of
-// which kind of event it started as, since a manager searching "Amahle"
-// wants both her stock adjustments and her finished tasks in one list.
-function toRow(a) {
-  const isTask = a.type === 'task_completed' || a.type === 'task_reopened'
-  const product = isTask ? null : productOf(a.sku)
-  const subject = isTask ? a.title : a.size && a.size !== 'One Size' ? `${product?.name ?? a.sku} (${a.size})` : product?.name ?? a.sku
-  return {
-    id: a.id,
-    at: a.at,
-    type: a.type,
-    branchId: a.branchId,
-    performedBy: a.performedBy,
-    subject,
-    note: a.note,
-    qtyDelta: isTask ? null : a.qtyDelta,
+// Every stock movement, task completion and order change lands in
+// state.activity — this turns that raw record into one flat, searchable
+// shape regardless of which kind of event it started as, since a manager
+// searching "Amahle" wants her stock adjustments, her finished tasks and
+// the orders she's touched all in one list. `pillStatus` is separate from
+// `type` on purpose: an order-status event's *type* is what the Orders
+// filter chip matches on, but its *badge* should show the actual
+// destination status (Packed, Fulfilled…), reusing the same status-pill
+// vocabulary the Orders page itself uses rather than a generic label.
+function toRow(a, orders) {
+  if (a.type === 'task_completed' || a.type === 'task_reopened') {
+    return { id: a.id, at: a.at, type: a.type, pillStatus: a.type, branchId: a.branchId, performedBy: a.performedBy, subject: a.title, note: a.note, qtyDelta: null }
   }
+  if (a.type === 'order_status') {
+    const order = orders.find((o) => o.id === a.orderId)
+    return {
+      id: a.id,
+      at: a.at,
+      type: 'order_status',
+      pillStatus: a.status,
+      branchId: a.branchId,
+      performedBy: a.performedBy,
+      subject: order ? `${a.orderId} — ${order.customer}` : a.orderId,
+      note: `Marked ${a.status}`,
+      qtyDelta: null,
+    }
+  }
+  if (a.type === 'order_reassigned') {
+    const order = orders.find((o) => o.id === a.orderId)
+    const toName = a.toStaffId ? staffName(a.toStaffId) : 'Unassigned'
+    return {
+      id: a.id,
+      at: a.at,
+      type: 'order_reassigned',
+      pillStatus: 'order_reassigned',
+      branchId: a.branchId,
+      performedBy: a.performedBy,
+      subject: order ? `${a.orderId} — ${order.customer}` : a.orderId,
+      note: `Reassigned to ${toName}${a.note ? ' — ' + a.note : ''}`,
+      qtyDelta: null,
+    }
+  }
+  // a stock movement (receive / sale / count_adjustment / return)
+  const product = productOf(a.sku)
+  const subject = a.size && a.size !== 'One Size' ? `${product?.name ?? a.sku} (${a.size})` : product?.name ?? a.sku
+  return { id: a.id, at: a.at, type: a.type, pillStatus: a.type, branchId: a.branchId, performedBy: a.performedBy, subject, note: a.note, qtyDelta: a.qtyDelta }
 }
 
 const TYPE_FILTERS = [
@@ -39,6 +67,7 @@ const TYPE_FILTERS = [
   { key: 'Stock out', match: (r) => r.type === 'sale' || r.type === 'count_adjustment' },
   { key: 'Returns', match: (r) => r.type === 'return' },
   { key: 'Tasks', match: (r) => r.type === 'task_completed' || r.type === 'task_reopened' },
+  { key: 'Orders', match: (r) => r.type === 'order_status' || r.type === 'order_reassigned' },
 ]
 
 export default function Reports() {
@@ -64,9 +93,9 @@ export default function Reports() {
   // running totals those movements added up to (that's what the Dashboard
   // and Stock pages are for).
   const allRows = useMemo(() => {
-    const rows = state.activity.map(toRow)
+    const rows = state.activity.map((a) => toRow(a, state.orders))
     return effectiveBranch ? rows.filter((r) => r.branchId === effectiveBranch) : rows
-  }, [state.activity, effectiveBranch])
+  }, [state.activity, state.orders, effectiveBranch])
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase()
@@ -94,7 +123,7 @@ export default function Reports() {
       formatGivenAt(r.at),
       staffName(r.performedBy),
       branchName(r.branchId),
-      r.type.replace('_', ' '),
+      r.pillStatus.replace(/_/g, ' '),
       r.subject,
       r.qtyDelta ?? '',
       r.note ?? '',
@@ -116,7 +145,7 @@ export default function Reports() {
         {
           heading: `Activity log (${rows.length} entries)`,
           headerRow: ['Date & time', 'Who', 'Branch', 'Event', 'Item / Task', 'Qty'],
-          rows: rows.map((r) => [formatGivenAt(r.at), staffName(r.performedBy), branchName(r.branchId), r.type.replace('_', ' '), r.subject, r.qtyDelta ?? '']),
+          rows: rows.map((r) => [formatGivenAt(r.at), staffName(r.performedBy), branchName(r.branchId), r.pillStatus.replace(/_/g, ' '), r.subject, r.qtyDelta ?? '']),
         },
       ],
     })
@@ -230,7 +259,7 @@ export default function Reports() {
                   <td>{staffName(r.performedBy)}</td>
                   <td>{branchName(r.branchId)}</td>
                   <td>
-                    <StatusPill status={r.type} />
+                    <StatusPill status={r.pillStatus} />
                   </td>
                   <td>{r.subject}</td>
                   <td className={'mono' + (typeof r.qtyDelta === 'number' ? r.qtyDelta >= 0 ? ' sale-pos' : ' sale-neg' : '')}>

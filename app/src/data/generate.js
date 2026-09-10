@@ -25,7 +25,7 @@ function mulberry32(seed) {
 // data away instead of quietly keeping serving whatever tier probabilities
 // were live the day they first opened the app. Without this, editing this
 // file only ever affects a brand-new browser profile.
-export const DATA_VERSION = 4
+export const DATA_VERSION = 5
 
 const rand = mulberry32(20260908)
 const ri = (min, max) => Math.floor(rand() * (max - min + 1)) + min
@@ -189,15 +189,23 @@ export function generateTasks() {
     for (let i = 0; i < count; i++) {
       const [title, type] = pick(TASK_LIBRARY)
       const done = rand() < 0.45
+      const assignedAt = daysAgo(ri(1, 5))
+      // dueAt is a real deadline derived from when it was actually given —
+      // same-day for a daily task, up to a few days out for an event —
+      // not the assignment timestamp itself wearing a second hat. A task
+      // that's still open past this is genuinely overdue, not just old.
+      const dueOffsetHours = type === 'event' ? ri(24, 96) : type === 'weekly' ? ri(24, 72) : ri(4, 30)
+      const dueAt = new Date(new Date(assignedAt).getTime() + dueOffsetHours * 3600 * 1000).toISOString()
+      const overdue = !done && new Date(dueAt) < new Date()
       tasks.push({
         id: `TSK-${String(n++).padStart(3, '0')}`,
         title,
         type,
         branchId: s.branchId,
         assignedTo: s.id,
-        status: done ? 'done' : rand() < 0.15 ? 'overdue' : 'pending',
-        dueAt: daysAgo(done ? ri(0, 1) : 0),
-        assignedAt: daysAgo(ri(1, 5)),
+        status: done ? 'done' : overdue ? 'overdue' : 'pending',
+        assignedAt,
+        dueAt,
         createdBy: s.branchId ? STAFF.find((m) => m.branchId === s.branchId && m.role === 'branch_manager')?.id ?? 'naledi' : 'naledi',
       })
     }

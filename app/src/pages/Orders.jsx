@@ -54,11 +54,11 @@ export default function Orders() {
   function advance(order) {
     const idx = FLOW.indexOf(order.status)
     if (idx === -1 || idx === FLOW.length - 1) return
-    dispatch({ type: 'SET_ORDER_STATUS', orderId: order.id, status: FLOW[idx + 1] })
+    dispatch({ type: 'SET_ORDER_STATUS', orderId: order.id, status: FLOW[idx + 1], performedBy: staff.id })
   }
 
   function assign(orderId, staffId) {
-    dispatch({ type: 'ASSIGN_ORDER', orderId, staffId: staffId || null })
+    dispatch({ type: 'ASSIGN_ORDER', orderId, staffId: staffId || null, performedBy: staff.id })
   }
 
   function requestStock(order, item) {

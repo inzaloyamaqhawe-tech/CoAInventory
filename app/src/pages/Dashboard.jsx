@@ -121,13 +121,13 @@ export default function Dashboard() {
             </Link>
           </div>
           {myTasks.slice(0, 5).map((t) => (
-            <div key={t.id} className="row-card">
+            <Link key={t.id} to="/team" className="row-card">
               <div>
                 <div className="name">{t.title}</div>
                 <div className="sub">{t.type}</div>
               </div>
               <StatusPill status={t.status} />
-            </div>
+            </Link>
           ))}
           {myTasks.length === 0 && <p className="muted">Nothing assigned right now.</p>}
         </section>
@@ -194,16 +194,16 @@ export default function Dashboard() {
             </Link>
           </div>
           {alerts.slice(0, 4).map((a) => (
-            <div key={a.id} className={`alert alert-${a.severity}`}>
+            <Link key={a.id} to="/alerts" className={`alert alert-${a.severity}`}>
               <StatusPill status={a.type} />
               <div className="body">
                 <p>{a.title}</p>
                 <p className="meta">{a.meta}</p>
               </div>
-            </div>
+            </Link>
           ))}
           {newSuggestions.slice(0, 2).map((s) => (
-            <div key={s.id} className="alert alert-suggestion">
+            <Link key={s.id} to="/transfers" className="alert alert-suggestion">
               <StatusPill status="suggested">Transfer</StatusPill>
               <div className="body">
                 <p>
@@ -213,7 +213,7 @@ export default function Dashboard() {
                   {branchName(s.fromBranchId)} &rarr; {branchName(s.toBranchId)}
                 </p>
               </div>
-            </div>
+            </Link>
           ))}
           {alerts.length === 0 && newSuggestions.length === 0 && <p className="muted">Nothing needs attention.</p>}
         </section>
@@ -227,7 +227,7 @@ export default function Dashboard() {
           {pickups.slice(0, 4).map((o) => {
             const owner = STAFF.find((s) => s.id === o.assignedTo)
             return (
-              <div key={o.id} className="row-card">
+              <Link key={o.id} to={`/orders/${o.id}`} className="row-card">
                 <div>
                   <div className="name">{o.id}</div>
                   <div className="sub">{o.customer}</div>
@@ -242,7 +242,7 @@ export default function Dashboard() {
                   )}
                   <StatusPill status={o.status} />
                 </div>
-              </div>
+              </Link>
             )
           })}
         </section>

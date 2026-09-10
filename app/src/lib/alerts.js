@@ -165,3 +165,18 @@ export function recommendSourceBranch(stockLevels, variantSku, neededQty, exclud
     })
   return candidates[0] ?? null
 }
+
+// Every id currently sitting in the same bucket the Alerts page shows —
+// stock alerts, un-accepted transfer suggestions, open staff requests —
+// scoped the same way the nav's own alert count already is. Shared by the
+// bell's "unseen since last visit" badge (Layout) and the mark-as-seen
+// call (Alerts) so the two can never drift into counting different things.
+export function notificationIds(state, staff, isAll) {
+  const inScope = (branchId) => isAll || branchId === staff.branchId
+  const alerts = computeAlerts(state.stockLevels).filter((a) => inScope(a.branchId))
+  const suggestions = computeTransferSuggestions(state.stockLevels, state.transfers)
+    .filter((s) => !s.linkedTransfer)
+    .filter((s) => inScope(s.fromBranchId) || inScope(s.toBranchId))
+  const requests = state.stockRequests.filter((r) => r.status === 'open' && inScope(r.branchId))
+  return [...alerts.map((a) => a.id), ...suggestions.map((s) => s.id), ...requests.map((r) => r.id)]
+}

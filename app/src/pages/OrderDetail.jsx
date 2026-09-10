@@ -64,7 +64,7 @@ export default function OrderDetail() {
   function advance() {
     const idx = FLOW.indexOf(order.status)
     if (idx === -1 || idx === FLOW.length - 1) return
-    dispatch({ type: 'SET_ORDER_STATUS', orderId: order.id, status: FLOW[idx + 1] })
+    dispatch({ type: 'SET_ORDER_STATUS', orderId: order.id, status: FLOW[idx + 1], performedBy: staff.id })
   }
 
   function markPicked(itemIndex, delta) {

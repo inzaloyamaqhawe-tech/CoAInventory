@@ -7,8 +7,8 @@ import { useScope } from '../lib/scope'
 import { useBranchFilter } from '../state/branchFilter.jsx'
 import { BRANCHES } from '../data/branches'
 import { useStore } from '../state/store.jsx'
-import { computeAlerts } from '../lib/alerts'
-import { NAV } from '../lib/nav'
+import { computeAlerts, notificationIds } from '../lib/alerts'
+import { NAV, rolesFor } from '../lib/nav'
 
 export default function Layout({ children }) {
   const { staff, signOut } = useSession()
@@ -30,6 +30,17 @@ export default function Layout({ children }) {
     const all = computeAlerts(state.stockLevels)
     return isAll ? all.length : all.filter((a) => a.branchId === staff.branchId).length
   }, [state.stockLevels, isAll, staff.branchId])
+
+  // The bell shows "who has actually checked since something new showed
+  // up" — deliberately separate from alertCount above, which is always
+  // just "how many things are open right now" regardless of who's looked.
+  const canSeeAlerts = rolesFor('/alerts').includes(staff.role)
+  const newCount = useMemo(() => {
+    if (!canSeeAlerts) return 0
+    const current = notificationIds(state, staff, isAll)
+    const seen = new Set(state.seenIds?.[staff.id] ?? [])
+    return current.filter((id) => !seen.has(id)).length
+  }, [state, staff, isAll, canSeeAlerts])
 
   function labelFor(item) {
     return item.altLabel?.[staff.role] ?? item.label
@@ -66,10 +77,12 @@ export default function Layout({ children }) {
           </nav>
           <div className="topnav-utility">
             {branchSwitcher}
-            <NavLink to="/alerts" className="bell-btn" aria-label="Alerts">
-              <Icon name="bell" size={16} />
-              {alertCount > 0 && <span className="badge">{alertCount}</span>}
-            </NavLink>
+            {canSeeAlerts && (
+              <NavLink to="/alerts" className="bell-btn" aria-label={newCount > 0 ? `Alerts — ${newCount} new` : 'Alerts'}>
+                <Icon name="bell" size={16} />
+                {newCount > 0 && <span className="badge">{newCount}</span>}
+              </NavLink>
+            )}
             <span className="avatar avatar-sm" title={staff.name}>
               {staff.initials}
             </span>
@@ -87,10 +100,12 @@ export default function Layout({ children }) {
         </div>
         <div className="topbar-right">
           {branchSwitcher}
-          <NavLink to="/alerts" className="bell-btn" aria-label="Alerts">
-            <Icon name="bell" size={17} />
-            {alertCount > 0 && <span className="badge">{alertCount}</span>}
-          </NavLink>
+          {canSeeAlerts && (
+            <NavLink to="/alerts" className="bell-btn" aria-label={newCount > 0 ? `Alerts — ${newCount} new` : 'Alerts'}>
+              <Icon name="bell" size={17} />
+              {newCount > 0 && <span className="badge">{newCount}</span>}
+            </NavLink>
+          )}
         </div>
       </header>
 

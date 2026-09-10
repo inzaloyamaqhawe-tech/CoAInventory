@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../state/store.jsx'
 import { useScope } from '../lib/scope'
 import { useBranchFilter } from '../state/branchFilter.jsx'
-import { computeAlerts, computeTransferSuggestions, TRANSFER_NEXT_LABEL } from '../lib/alerts'
+import { computeAlerts, computeTransferSuggestions, notificationIds, TRANSFER_NEXT_LABEL } from '../lib/alerts'
 import { productOf } from '../lib/derive'
 import { exportExcel, exportPDF } from '../lib/exportDocs'
 import { BRANCHES, branchName, staffName } from '../data/branches'
@@ -50,6 +50,15 @@ export default function Alerts() {
   const [severity, setSeverity] = useState('All')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(25)
+  const [selectedRequestIds, setSelectedRequestIds] = useState(() => new Set())
+
+  // Opening this page is the "read" action the bell's unseen count tracks
+  // against — everything visible right now for this role/scope is marked
+  // seen, same list notificationIds() builds for the badge itself.
+  useEffect(() => {
+    dispatch({ type: 'MARK_SEEN', staffId: staff.id, ids: notificationIds(state, staff, isAll) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const alerts = useMemo(() => {
     let a = computeAlerts(state.stockLevels)
@@ -71,6 +80,20 @@ export default function Alerts() {
     () => state.stockRequests.filter((r) => r.status === 'open' && (!effectiveBranch || r.branchId === effectiveBranch)),
     [state.stockRequests, effectiveBranch]
   )
+
+  function toggleRequest(id) {
+    setSelectedRequestIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function bulkDismiss() {
+    dispatch({ type: 'BULK_RESOLVE_REQUESTS', requestIds: [...selectedRequestIds] })
+    setSelectedRequestIds(new Set())
+  }
 
   // The out-of-stock report is its own fixed view — regardless of which
   // severity chip is active on screen, "what's out" always means exactly
@@ -124,12 +147,25 @@ export default function Alerts() {
         <section>
           <div className="section-head">
             <h3>Staff requests</h3>
-            <span className="muted small">{staffRequests.length}</span>
+            {selectedRequestIds.size > 0 ? (
+              <button className="btn-small btn-ghost btn-xs" onClick={bulkDismiss}>
+                Dismiss {selectedRequestIds.size} selected
+              </button>
+            ) : (
+              <span className="muted small">{staffRequests.length}</span>
+            )}
           </div>
           {staffRequests.map((r) => {
             const p = productOf(r.sku)
             return (
               <div key={r.id} className="alert alert-suggestion">
+                <input
+                  type="checkbox"
+                  checked={selectedRequestIds.has(r.id)}
+                  onChange={() => toggleRequest(r.id)}
+                  aria-label={`Select request for ${p?.name ?? r.sku}`}
+                  style={{ marginTop: 2 }}
+                />
                 <StatusPill status="new">Request</StatusPill>
                 <div className="body">
                   <p>
