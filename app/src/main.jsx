@@ -10,13 +10,15 @@ import './styles.css'
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <HashRouter>
-      <SessionProvider>
-        <StoreProvider>
+      {/* Store outermost: the signed-in person is now resolved against the
+          live roster in store state, so Session has to sit inside it. */}
+      <StoreProvider>
+        <SessionProvider>
           <BranchFilterProvider>
             <App />
           </BranchFilterProvider>
-        </StoreProvider>
-      </SessionProvider>
+        </SessionProvider>
+      </StoreProvider>
     </HashRouter>
   </React.StrictMode>
 )

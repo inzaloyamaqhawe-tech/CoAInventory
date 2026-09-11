@@ -1,14 +1,15 @@
 import React from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { CATALOG, formatZAR } from '../data/catalog'
-import { useStore } from '../state/store.jsx'
-import { BRANCHES, branchName, staffName } from '../data/branches'
+import { useStore, useStaff } from '../state/store.jsx'
+import { BRANCHES, branchName } from '../data/branches'
 import { timeAgo } from '../lib/scope'
 import StatusPill from '../components/StatusPill.jsx'
 
 export default function ProductDetail() {
   const { sku } = useParams()
   const { state } = useStore()
+  const { staffName } = useStaff()
   const product = CATALOG.find((p) => p.sku === sku)
 
   if (!product) {

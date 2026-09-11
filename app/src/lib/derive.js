@@ -99,6 +99,22 @@ export function dailySeries(totalRevenue, days = 14) {
   })
 }
 
+// Rolls the stored per-branch monthly history up into one series for the
+// trend chart — every branch summed when looking at the whole business, or
+// just the one when the branch switcher is narrowed. Unlike dailySeries
+// above, nothing is being shaped here: these are the stored monthly totals.
+export function monthlySeries(salesHistory, branchId) {
+  const scoped = branchId ? (salesHistory ?? []).filter((p) => p.branchId === branchId) : salesHistory ?? []
+  const byMonth = new Map()
+  for (const p of scoped) {
+    const cur = byMonth.get(p.month) ?? { month: p.month, label: p.label, revenue: 0, units: 0 }
+    cur.revenue += p.revenue
+    cur.units += p.units
+    byMonth.set(p.month, cur)
+  }
+  return [...byMonth.values()].sort((a, b) => a.month.localeCompare(b.month))
+}
+
 export function taskCompletion(tasks, filterFn) {
   const rows = tasks.filter(filterFn)
   const done = rows.filter((t) => t.status === 'done').length

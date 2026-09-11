@@ -1,9 +1,9 @@
 import React, { useState } from 'react'
-import { useStore } from '../state/store.jsx'
+import { useStore, useStaff } from '../state/store.jsx'
 import { useScope } from '../lib/scope'
 import { useBranchFilter } from '../state/branchFilter.jsx'
 import { taskCompletion } from '../lib/derive'
-import { STAFF, ROLES, BRANCHES, branchName, assignableStaffForBranch } from '../data/branches'
+import { ROLES, BRANCHES, branchName } from '../data/branches'
 import StatusPill from '../components/StatusPill.jsx'
 import Icon from '../components/Icon.jsx'
 import ReassignTaskModal from '../components/ReassignTaskModal.jsx'
@@ -24,6 +24,7 @@ function defaultDueLocal() {
 
 export default function Team() {
   const { state, dispatch } = useStore()
+  const { staffById, assignableStaffForBranch } = useStaff()
   const { staff, isAll } = useScope()
   const { branchId: filterBranch } = useBranchFilter()
   const effectiveBranch = isAll ? filterBranch : staff.branchId
@@ -48,7 +49,7 @@ export default function Team() {
   const locationOptions = isAll ? BRANCHES : BRANCHES.filter((b) => b.id === staff.branchId)
   const assignOptions = newLocation ? assignableStaffForBranch(newLocation) : []
   const validTask = newTitle.trim() && newLocation && newFor
-  const viewingPerson = viewingStaffId ? STAFF.find((s) => s.id === viewingStaffId) : null
+  const viewingPerson = viewingStaffId ? staffById(viewingStaffId) : null
 
   // A task is only ever completed by whoever it's assigned to — this is
   // the single toggle used everywhere, and it silently refuses to touch a
@@ -59,7 +60,7 @@ export default function Team() {
   }
 
   function confirmReassign(newStaffId, note) {
-    const person = STAFF.find((s) => s.id === newStaffId)
+    const person = staffById(newStaffId)
     dispatch({
       type: 'REASSIGN_TASK',
       taskId: reassigning.id,

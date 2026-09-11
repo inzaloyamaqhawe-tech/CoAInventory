@@ -15,6 +15,7 @@ import OrderDetail from './pages/OrderDetail.jsx'
 import Branches from './pages/Branches.jsx'
 import Alerts from './pages/Alerts.jsx'
 import Reports from './pages/Reports.jsx'
+import Staff from './pages/Staff.jsx'
 
 // Enforces the same role list the nav is built from — a Sales Associate
 // can't reach Alerts/Transfers/Products/Branches/Reports by typing the URL
@@ -104,6 +105,14 @@ export default function App() {
           element={
             <Guarded path="/reports">
               <Reports />
+            </Guarded>
+          }
+        />
+        <Route
+          path="/staff"
+          element={
+            <Guarded path="/staff">
+              <Staff />
             </Guarded>
           }
         />

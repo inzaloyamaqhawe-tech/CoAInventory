@@ -1,13 +1,13 @@
 import React, { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts'
-import { useStore } from '../state/store.jsx'
+import { useStore, useStaff } from '../state/store.jsx'
 import { useScope } from '../lib/scope'
 import { useBranchFilter } from '../state/branchFilter.jsx'
 import { computeAlerts, computeTransferSuggestions } from '../lib/alerts'
-import { leaderboard, branchRevenue14d, branchUnits14d, taskCompletion, dailySeries, productOf, topProducts, swatchClass } from '../lib/derive'
+import { leaderboard, branchRevenue14d, branchUnits14d, taskCompletion, dailySeries, monthlySeries, productOf, topProducts, swatchClass } from '../lib/derive'
 import { formatZAR } from '../data/catalog'
-import { BRANCHES, STAFF, branchName } from '../data/branches'
+import { BRANCHES, branchName } from '../data/branches'
 import StatusPill from '../components/StatusPill.jsx'
 import Icon from '../components/Icon.jsx'
 
@@ -16,6 +16,7 @@ const INK = '#17140f'
 
 export default function Dashboard() {
   const { state } = useStore()
+  const { staffById } = useStaff()
   const { staff, isAll } = useScope()
   const { branchId: filterBranch } = useBranchFilter()
   const effectiveBranch = isAll ? filterBranch : staff.branchId
@@ -39,6 +40,25 @@ export default function Dashboard() {
   const revenue = effectiveBranch ? branchRevenue14d(state.stockLevels, effectiveBranch) : board.reduce((s, r) => s + r.revenue, 0)
   const units = effectiveBranch ? branchUnits14d(state.stockLevels, effectiveBranch) : board.reduce((s, r) => s + r.units, 0)
   const trend = useMemo(() => dailySeries(revenue), [revenue])
+  const months = useMemo(() => monthlySeries(state.salesHistory, effectiveBranch), [state.salesHistory, effectiveBranch])
+  const monthDirection = useMemo(() => {
+    if (months.length < 2) return null
+    const last = months[months.length - 1].revenue
+    const prev = months[months.length - 2].revenue
+    if (!prev) return null
+    return Math.round(((last - prev) / prev) * 100)
+  }, [months])
+
+  // "Which branch is behind today" — the ops view that the leaderboard
+  // (which is about money) doesn't answer.
+  const branchProgress = useMemo(() => {
+    return BRANCHES.map((b) => {
+      const tasks = taskCompletion(state.tasks, (t) => t.branchId === b.id)
+      const openOrders = state.orders.filter((o) => o.branchId === b.id && o.status !== 'fulfilled').length
+      const unassigned = state.orders.filter((o) => o.branchId === b.id && o.status !== 'fulfilled' && !o.assignedTo).length
+      return { branch: b, tasks, openOrders, unassigned }
+    }).filter((r) => r.tasks.total > 0 || r.openOrders > 0)
+  }, [state.tasks, state.orders])
 
   const myTasks = state.tasks.filter((t) => t.assignedTo === staff.id)
   const branchTasksToday = taskCompletion(state.tasks, (t) => (effectiveBranch ? t.branchId === effectiveBranch : true))
@@ -161,6 +181,72 @@ export default function Dashboard() {
         </div>
       )}
 
+      {!isAssociate && months.length > 1 && (
+        <div className="chart-card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+            <h3>Sales trend — last {months.length} months</h3>
+            {monthDirection !== null && (
+              <span className={'pill ' + (monthDirection >= 0 ? 'pill-ok' : 'pill-critical')}>
+                {monthDirection >= 0 ? '▲' : '▼'} {Math.abs(monthDirection)}% vs last month
+              </span>
+            )}
+          </div>
+          <p className="muted small" style={{ margin: '-2px 0 12px' }}>
+            {effectiveBranch ? branchName(effectiveBranch) : 'Every branch combined'} · monthly totals
+          </p>
+          <div style={{ height: 210 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={months} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="monthFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={RED} stopOpacity={0.28} />
+                    <stop offset="100%" stopColor={RED} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7e1d2" />
+                <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#77705f' }} axisLine={{ stroke: '#e7e1d2' }} tickLine={false} />
+                <YAxis
+                  tick={{ fontSize: 11, fill: '#77705f' }}
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={(v) => `R${Math.round(v / 1000)}k`}
+                  width={52}
+                />
+                <Tooltip formatter={(v) => formatZAR(v)} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e7e1d2' }} />
+                <Area type="monotone" dataKey="revenue" stroke={RED} strokeWidth={2.4} fill="url(#monthFill)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {!isAssociate && !effectiveBranch && branchProgress.length > 0 && (
+        <section>
+          <div className="section-head">
+            <h3>Today, by branch</h3>
+            <span className="muted small">tasks done · open orders</span>
+          </div>
+          {branchProgress.map(({ branch, tasks, openOrders, unassigned }) => (
+            <div key={branch.id} className="lb-row">
+              <span className="lb-name">{branch.name}</span>
+              <span className="lb-track">
+                <span
+                  className="lb-fill"
+                  style={{ width: `${tasks.pct}%`, background: tasks.pct < 50 ? 'var(--critical)' : undefined }}
+                />
+              </span>
+              <span className="mono muted small" style={{ whiteSpace: 'nowrap' }}>
+                {tasks.done}/{tasks.total} tasks
+              </span>
+              <span className="lb-val" style={{ whiteSpace: 'nowrap' }}>
+                {openOrders} open
+                {unassigned > 0 && <span className="text-critical"> · {unassigned} unassigned</span>}
+              </span>
+            </div>
+          ))}
+        </section>
+      )}
+
       {!isAssociate && !effectiveBranch && (
         <div className="chart-card">
           <h3>Branch leaderboard — last 14 days</h3>
@@ -225,7 +311,7 @@ export default function Dashboard() {
             <h3>Ready for pickup</h3>
           </div>
           {pickups.slice(0, 4).map((o) => {
-            const owner = STAFF.find((s) => s.id === o.assignedTo)
+            const owner = staffById(o.assignedTo)
             return (
               <Link key={o.id} to={`/orders/${o.id}`} className="row-card">
                 <div>

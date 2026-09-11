@@ -12,7 +12,11 @@ export const ROLES = {
   stock_controller: { label: 'Stock Controller', scope: 'all' },
 }
 
-export const STAFF = [
+// The starting roster only. Once the app is running, the live roster lives
+// in store state (state.staff) so it can actually be managed in-app — see
+// useStaff() in state/store.jsx. Nothing outside seeding should read this
+// array directly, or a newly hired/deactivated person won't be reflected.
+export const SEED_STAFF = [
   { id: 'naledi', name: 'Naledi Mokoena', role: 'ops_manager', branchId: null, initials: 'NM' },
   { id: 'tumi', name: 'Tumi Radebe', role: 'stock_controller', branchId: 'WH', initials: 'TR' },
   { id: 'kabelo', name: 'Kabelo Sithole', role: 'branch_manager', branchId: 'SAN', initials: 'KS' },
@@ -35,11 +39,20 @@ export function branchName(id) {
 // Single source of truth for order assignment, task assignment and task
 // reassignment alike, so "Durban work never lands on a Sandton person" is
 // enforced the same way everywhere instead of three places that could drift.
-export function assignableStaffForBranch(branchId) {
-  if (branchId === 'WH') return STAFF.filter((s) => s.role === 'stock_controller')
-  return STAFF.filter((s) => s.branchId === branchId && (s.role === 'sales_associate' || s.role === 'branch_manager'))
+// Takes the roster as an argument because the live one is store state now;
+// useStaff() in state/store.jsx binds this to it for components.
+export function assignableStaffFrom(staffList, branchId) {
+  const active = staffList.filter((s) => s.active !== false)
+  if (branchId === 'WH') return active.filter((s) => s.role === 'stock_controller')
+  return active.filter((s) => s.branchId === branchId && (s.role === 'sales_associate' || s.role === 'branch_manager'))
 }
 
-export function staffName(id) {
-  return STAFF.find((s) => s.id === id)?.name ?? id
+// Initials for a newly added person — "Chloé van Wyk" → "CV", first and
+// last word, so a two-letter avatar works the same as the seeded ones.
+export function initialsFor(name) {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '??'
+  const first = parts[0][0] ?? ''
+  const last = parts.length > 1 ? parts[parts.length - 1][0] ?? '' : ''
+  return (first + last).toUpperCase()
 }

@@ -178,5 +178,14 @@ export function notificationIds(state, staff, isAll) {
     .filter((s) => !s.linkedTransfer)
     .filter((s) => inScope(s.fromBranchId) || inScope(s.toBranchId))
   const requests = state.stockRequests.filter((r) => r.status === 'open' && inScope(r.branchId))
-  return [...alerts.map((a) => a.id), ...suggestions.map((s) => s.id), ...requests.map((r) => r.id)]
+  // Only the Ops Manager can clear these, so they only count as unseen for
+  // whoever can actually act on them.
+  const corrections =
+    staff.role === 'ops_manager' ? (state.pendingCorrections ?? []).filter((c) => c.status === 'pending') : []
+  return [
+    ...alerts.map((a) => a.id),
+    ...suggestions.map((s) => s.id),
+    ...requests.map((r) => r.id),
+    ...corrections.map((c) => c.id),
+  ]
 }

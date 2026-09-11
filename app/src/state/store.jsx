@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useReducer } from 'react'
 import { buildInitialState, DATA_VERSION } from '../data/generate'
+import { assignableStaffFrom } from '../data/branches'
 
 const STORAGE_KEY = 'coa-ops-pass-v1'
 const StoreCtx = createContext(null)
@@ -28,7 +29,7 @@ function load() {
       // assignment timestamps existed, and Team.jsx's "given at" column needs
       // every task to have one.
       const tasks = (parsed.tasks ?? []).map((t) => ({ assignedAt: t.dueAt ?? new Date().toISOString(), ...t }))
-      return { stockRequests: [], seenIds: {}, ...parsed, orders, tasks }
+      return { stockRequests: [], seenIds: {}, pendingCorrections: [], salesHistory: [], staff: [], ...parsed, orders, tasks }
     }
   } catch {
     /* ignore corrupt storage, fall through to a fresh seed */
@@ -329,6 +330,95 @@ function reducer(state, action) {
       return { ...state, stockRequests }
     }
 
+    // ---------- staff roster ----------
+    // Deactivating never deletes: historical records point at staff ids
+    // (who picked this, who adjusted that), and a deleted row would turn
+    // every one of those into a dangling id. Inactive people stay
+    // resolvable by name forever, they just stop being assignable.
+    case 'ADD_STAFF': {
+      return { ...state, staff: [...state.staff, action.staff] }
+    }
+
+    case 'UPDATE_STAFF': {
+      const staff = state.staff.map((s) => (s.id === action.id ? { ...s, ...action.changes } : s))
+      return { ...state, staff }
+    }
+
+    case 'SET_STAFF_ACTIVE': {
+      const staff = state.staff.map((s) => (s.id === action.id ? { ...s, active: action.active } : s))
+      return { ...state, staff }
+    }
+
+    // ---------- stock corrections needing a second pair of eyes ----------
+    // A big adjustment by anyone who isn't the Ops Manager parks here
+    // instead of moving stock: the requester states what and why, and
+    // somebody else signs it off. Nothing changes on the shelf until then.
+    case 'REQUEST_CORRECTION': {
+      return { ...state, pendingCorrections: [action.correction, ...state.pendingCorrections] }
+    }
+
+    case 'APPROVE_CORRECTION': {
+      const correction = state.pendingCorrections.find((c) => c.id === action.correctionId)
+      if (!correction) return state
+      const returning = correction.isReturn && correction.delta > 0
+      const stockLevels = state.stockLevels.map((r) => {
+        if (r.id !== correction.rowId) return r
+        const qtyOnHand = Math.max(0, r.qtyOnHand + correction.delta)
+        const soldLast14d = returning ? Math.max(0, r.soldLast14d - correction.delta) : r.soldLast14d
+        return { ...r, qtyOnHand, soldLast14d, lastCountedAt: new Date().toISOString() }
+      })
+      const pendingCorrections = state.pendingCorrections.map((c) =>
+        c.id === action.correctionId ? { ...c, status: 'approved', decidedBy: action.approvedBy, decidedAt: new Date().toISOString() } : c
+      )
+      // One ledger row for one stock movement — the approval *is* the
+      // movement, so it doesn't also get a separate plain adjustment entry
+      // that would double-count the same units.
+      const activity = [
+        {
+          id: `ACT-${Date.now()}`,
+          type: 'correction_approved',
+          variantSku: correction.variantSku,
+          sku: correction.sku,
+          size: correction.size,
+          branchId: correction.branchId,
+          qtyDelta: correction.delta,
+          performedBy: action.approvedBy,
+          requestedBy: correction.requestedBy,
+          note: correction.note,
+          at: new Date().toISOString(),
+        },
+        ...state.activity,
+      ]
+      return { ...state, stockLevels, pendingCorrections, activity }
+    }
+
+    case 'REJECT_CORRECTION': {
+      const correction = state.pendingCorrections.find((c) => c.id === action.correctionId)
+      if (!correction) return state
+      const pendingCorrections = state.pendingCorrections.map((c) =>
+        c.id === action.correctionId
+          ? { ...c, status: 'rejected', decidedBy: action.rejectedBy, decidedAt: new Date().toISOString(), decisionReason: action.reason }
+          : c
+      )
+      const activity = [
+        {
+          id: `ACT-${Date.now()}`,
+          type: 'correction_rejected',
+          variantSku: correction.variantSku,
+          sku: correction.sku,
+          size: correction.size,
+          branchId: correction.branchId,
+          qtyDelta: null, // nothing moved — that's the point of a rejection
+          performedBy: action.rejectedBy,
+          requestedBy: correction.requestedBy,
+          note: action.reason,
+          at: new Date().toISOString(),
+        },
+        ...state.activity,
+      ]
+      return { ...state, pendingCorrections, activity }
+    }
+
     // The bell badge's "unseen since last visit" count — keyed per staff
     // member since this is a shared shop device several people sign into,
     // not tracking one person's session. Opening Alerts marks everything
@@ -364,4 +454,25 @@ export function useStore() {
   const ctx = useContext(StoreCtx)
   if (!ctx) throw new Error('useStore must be used within StoreProvider')
   return ctx
+}
+
+// The live roster and the lookups that used to be module-level functions in
+// data/branches.js. They read store state now, so a person added or
+// deactivated on the Staff page is reflected everywhere immediately —
+// assignment dropdowns, sign-in, the names on historical records.
+export function useStaff() {
+  const { state } = useStore()
+  return useMemo(() => {
+    const list = state.staff ?? []
+    const byId = new Map(list.map((s) => [s.id, s]))
+    return {
+      allStaff: list,
+      activeStaff: list.filter((s) => s.active !== false),
+      staffById: (id) => byId.get(id) ?? null,
+      // Falls back to the raw id so a record pointing at someone who no
+      // longer exists still renders something rather than blank.
+      staffName: (id) => byId.get(id)?.name ?? id ?? '—',
+      assignableStaffForBranch: (branchId) => assignableStaffFrom(list, branchId),
+    }
+  }, [state.staff])
 }

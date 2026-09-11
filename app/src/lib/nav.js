@@ -12,6 +12,7 @@ export const NAV = [
   { path: '/branches', label: 'Branches', icon: 'store', roles: ['ops_manager', 'stock_controller'] },
   { path: '/alerts', label: 'Alerts', icon: 'bell', roles: ['ops_manager', 'stock_controller', 'branch_manager'] },
   { path: '/reports', label: 'Reports', icon: 'chart', roles: ['ops_manager', 'stock_controller', 'branch_manager'] },
+  { path: '/staff', label: 'Staff', icon: 'users', roles: ['ops_manager'] },
 ]
 
 export function rolesFor(path) {

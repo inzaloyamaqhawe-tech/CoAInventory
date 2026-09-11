@@ -1,6 +1,7 @@
 import React from 'react'
 import { useSession } from '../state/session.jsx'
-import { STAFF, BRANCHES, ROLES, branchName } from '../data/branches'
+import { useStaff } from '../state/store.jsx'
+import { BRANCHES, ROLES, branchName } from '../data/branches'
 import Wordmark from '../components/Wordmark.jsx'
 import Icon from '../components/Icon.jsx'
 
@@ -12,12 +13,14 @@ const FEATURES = [
 
 export default function SignIn() {
   const { signIn } = useSession()
+  const { activeStaff } = useStaff()
 
+  // Deactivated staff never appear here — that's what deactivating is for.
   const byRole = {
-    ops_manager: STAFF.filter((s) => s.role === 'ops_manager'),
-    stock_controller: STAFF.filter((s) => s.role === 'stock_controller'),
-    branch_manager: STAFF.filter((s) => s.role === 'branch_manager'),
-    sales_associate: STAFF.filter((s) => s.role === 'sales_associate'),
+    ops_manager: activeStaff.filter((s) => s.role === 'ops_manager'),
+    stock_controller: activeStaff.filter((s) => s.role === 'stock_controller'),
+    branch_manager: activeStaff.filter((s) => s.role === 'branch_manager'),
+    sales_associate: activeStaff.filter((s) => s.role === 'sales_associate'),
   }
 
   return (

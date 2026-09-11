@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { useStore } from '../state/store.jsx'
+import { useStore, useStaff } from '../state/store.jsx'
 import { useScope } from '../lib/scope'
 import { useBranchFilter } from '../state/branchFilter.jsx'
 import { computeAlerts, computeTransferSuggestions, notificationIds, TRANSFER_NEXT_LABEL } from '../lib/alerts'
 import { productOf } from '../lib/derive'
 import { exportExcel, exportPDF } from '../lib/exportDocs'
-import { BRANCHES, branchName, staffName } from '../data/branches'
+import { BRANCHES, branchName } from '../data/branches'
 import { timeAgo } from '../lib/scope'
 import StatusPill from '../components/StatusPill.jsx'
 import Pagination from '../components/Pagination.jsx'
@@ -42,8 +42,73 @@ function ManualPullPicker({ request, stockLevels, onPull }) {
   )
 }
 
+// A large correction waiting on the Ops Manager. Rejecting takes a reason
+// for the same reason reassigning half-picked work does — the person who
+// raised it is owed an answer they can act on, not just a "no".
+function CorrectionRow({ correction, staffName, onApprove, onReject }) {
+  const [rejecting, setRejecting] = useState(false)
+  const [reason, setReason] = useState('')
+  const reasonValid = reason.trim().length >= 3
+  const sign = correction.delta >= 0 ? '+' : ''
+
+  return (
+    <div className="alert alert-warning">
+      <StatusPill status="warning">Approval</StatusPill>
+      <div className="body">
+        <p>
+          <span className={'mono ' + (correction.delta >= 0 ? 'sale-pos' : 'sale-neg')}>
+            {sign}
+            {correction.delta}
+          </span>{' '}
+          {correction.productName}
+          {correction.size && correction.size !== 'One Size' ? ` (${correction.size})` : ''} — {branchName(correction.branchId)}
+        </p>
+        <p className="meta">
+          {staffName(correction.requestedBy)} · {correction.qtyBefore} on hand now &rarr;{' '}
+          {Math.max(0, correction.qtyBefore + correction.delta)} if approved · {timeAgo(correction.requestedAt)}
+          {correction.note ? ` · ${correction.note}` : ''}
+        </p>
+        {rejecting && (
+          <div style={{ marginTop: 8 }}>
+            <input
+              className="input"
+              style={{ width: '100%' }}
+              placeholder="Why is it being rejected?"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              autoFocus
+            />
+          </div>
+        )}
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        {rejecting ? (
+          <>
+            <button className="btn-small btn-xs" disabled={!reasonValid} onClick={() => onReject(correction, reason.trim())}>
+              Confirm reject
+            </button>
+            <button className="btn-small btn-ghost btn-xs" onClick={() => setRejecting(false)}>
+              Cancel
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="btn-small btn-xs" onClick={() => onApprove(correction)}>
+              Approve
+            </button>
+            <button className="btn-small btn-ghost btn-xs" onClick={() => setRejecting(true)}>
+              Reject
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function Alerts() {
   const { state, dispatch } = useStore()
+  const { staffName } = useStaff()
   const { staff, isAll } = useScope()
   const { branchId: filterBranch } = useBranchFilter()
   const effectiveBranch = isAll ? filterBranch : staff.branchId
@@ -95,6 +160,25 @@ export default function Alerts() {
     setSelectedRequestIds(new Set())
   }
 
+  // Only the Ops Manager sees this queue — they're the second pair of eyes
+  // the threshold exists to bring in, so showing it to anyone else would
+  // just be a list they can look at and not act on.
+  const pendingCorrections = useMemo(
+    () =>
+      staff.role === 'ops_manager'
+        ? (state.pendingCorrections ?? []).filter((c) => c.status === 'pending' && (!effectiveBranch || c.branchId === effectiveBranch))
+        : [],
+    [state.pendingCorrections, staff.role, effectiveBranch]
+  )
+
+  function approveCorrection(correction) {
+    dispatch({ type: 'APPROVE_CORRECTION', correctionId: correction.id, approvedBy: staff.id })
+  }
+
+  function rejectCorrection(correction, reason) {
+    dispatch({ type: 'REJECT_CORRECTION', correctionId: correction.id, rejectedBy: staff.id, reason })
+  }
+
   // The out-of-stock report is its own fixed view — regardless of which
   // severity chip is active on screen, "what's out" always means exactly
   // out_of_stock + low_stock, nothing else.
@@ -142,6 +226,18 @@ export default function Alerts() {
           </div>
         </div>
       </div>
+
+      {pendingCorrections.length > 0 && (
+        <section>
+          <div className="section-head">
+            <h3>Stock corrections awaiting approval</h3>
+            <span className="muted small">{pendingCorrections.length}</span>
+          </div>
+          {pendingCorrections.map((c) => (
+            <CorrectionRow key={c.id} correction={c} staffName={staffName} onApprove={approveCorrection} onReject={rejectCorrection} />
+          ))}
+        </section>
+      )}
 
       {staffRequests.length > 0 && (
         <section>

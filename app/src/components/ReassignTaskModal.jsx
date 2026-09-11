@@ -1,12 +1,13 @@
 import React, { useState } from 'react'
 import Modal from './Modal.jsx'
-import { staffName } from '../data/branches'
+import { useStaff } from '../state/store.jsx'
 
 // A task only ever gets marked done by the person it's assigned to — a
 // manager's only lever on someone else's task is to move it, and only
 // after actually confirming that person can't do it (absent, whatever the
 // reason). No silent "mark done for them," no reassigning without saying why.
 export default function ReassignTaskModal({ task, options, currentStaffId, onClose, onConfirm }) {
+  const { staffName } = useStaff()
   const [confirmed, setConfirmed] = useState(false)
   const [newStaffId, setNewStaffId] = useState('')
   const [note, setNote] = useState('')

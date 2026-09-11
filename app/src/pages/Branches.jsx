@@ -1,12 +1,13 @@
 import React from 'react'
-import { useStore } from '../state/store.jsx'
-import { BRANCHES, STAFF } from '../data/branches'
+import { useStore, useStaff } from '../state/store.jsx'
+import { BRANCHES } from '../data/branches'
 import { branchRevenue14d, taskCompletion } from '../lib/derive'
 import { computeAlerts } from '../lib/alerts'
 import { formatZAR } from '../data/catalog'
 
 export default function Branches() {
   const { state } = useStore()
+  const { activeStaff } = useStaff()
   const alerts = computeAlerts(state.stockLevels)
 
   return (
@@ -22,7 +23,7 @@ export default function Branches() {
           const units = lines.reduce((s, r) => s + r.qtyOnHand, 0)
           const revenue = b.type === 'retail' ? branchRevenue14d(state.stockLevels, b.id) : null
           const branchAlerts = alerts.filter((a) => a.branchId === b.id).length
-          const staffCount = STAFF.filter((s) => s.branchId === b.id).length
+          const staffCount = activeStaff.filter((s) => s.branchId === b.id).length
           const tasks = taskCompletion(state.tasks, (t) => t.branchId === b.id)
 
           return (

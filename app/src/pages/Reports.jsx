@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { useStore } from '../state/store.jsx'
+import { useStore, useStaff } from '../state/store.jsx'
 import { useScope, formatGivenAt } from '../lib/scope'
 import { useBranchFilter } from '../state/branchFilter.jsx'
 import { topMover, coldest, taskCompletion, productOf } from '../lib/derive'
 import { exportExcel, exportPDF } from '../lib/exportDocs'
-import { STAFF, BRANCHES, branchName, staffName } from '../data/branches'
+import { BRANCHES, branchName } from '../data/branches'
 import StatusPill from '../components/StatusPill.jsx'
 import Pagination from '../components/Pagination.jsx'
 import Icon from '../components/Icon.jsx'
@@ -18,7 +18,7 @@ import Icon from '../components/Icon.jsx'
 // filter chip matches on, but its *badge* should show the actual
 // destination status (Packed, Fulfilled…), reusing the same status-pill
 // vocabulary the Orders page itself uses rather than a generic label.
-function toRow(a, orders) {
+function toRow(a, orders, staffName) {
   if (a.type === 'task_completed' || a.type === 'task_reopened') {
     return { id: a.id, at: a.at, type: a.type, pillStatus: a.type, branchId: a.branchId, performedBy: a.performedBy, subject: a.title, note: a.note, qtyDelta: null }
   }
@@ -51,6 +51,22 @@ function toRow(a, orders) {
       qtyDelta: null,
     }
   }
+  if (a.type === 'correction_approved' || a.type === 'correction_rejected') {
+    const p = productOf(a.sku)
+    const name = a.size && a.size !== 'One Size' ? `${p?.name ?? a.sku} (${a.size})` : p?.name ?? a.sku
+    const who = a.requestedBy ? `Raised by ${staffName(a.requestedBy)}` : null
+    return {
+      id: a.id,
+      at: a.at,
+      type: a.type,
+      pillStatus: a.type,
+      branchId: a.branchId,
+      performedBy: a.performedBy,
+      subject: name,
+      note: [who, a.note].filter(Boolean).join(' — '),
+      qtyDelta: a.qtyDelta ?? null,
+    }
+  }
   // a stock movement (receive / sale / count_adjustment / return)
   const product = productOf(a.sku)
   const subject = a.size && a.size !== 'One Size' ? `${product?.name ?? a.sku} (${a.size})` : product?.name ?? a.sku
@@ -68,10 +84,12 @@ const TYPE_FILTERS = [
   { key: 'Returns', match: (r) => r.type === 'return' },
   { key: 'Tasks', match: (r) => r.type === 'task_completed' || r.type === 'task_reopened' },
   { key: 'Orders', match: (r) => r.type === 'order_status' || r.type === 'order_reassigned' },
+  { key: 'Corrections', match: (r) => r.type === 'correction_approved' || r.type === 'correction_rejected' },
 ]
 
 export default function Reports() {
   const { state } = useStore()
+  const { allStaff, staffName } = useStaff()
   const { staff, isAll } = useScope()
   const { branchId: filterBranch } = useBranchFilter()
   const effectiveBranch = isAll ? filterBranch : staff.branchId
@@ -81,7 +99,7 @@ export default function Reports() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(25)
 
-  const staffRows = STAFF.filter((s) => (isAll ? s.role !== 'ops_manager' && s.role !== 'stock_controller' : s.branchId === staff.branchId))
+  const staffRows = allStaff.filter((s) => (isAll ? s.role !== 'ops_manager' && s.role !== 'stock_controller' : s.branchId === staff.branchId))
   const staffCompletionRows = staffRows
     .map((s) => ({ s, c: taskCompletion(state.tasks, (t) => t.assignedTo === s.id) }))
     .filter(({ c }) => c.total > 0)
@@ -93,9 +111,9 @@ export default function Reports() {
   // running totals those movements added up to (that's what the Dashboard
   // and Stock pages are for).
   const allRows = useMemo(() => {
-    const rows = state.activity.map((a) => toRow(a, state.orders))
+    const rows = state.activity.map((a) => toRow(a, state.orders, staffName))
     return effectiveBranch ? rows.filter((r) => r.branchId === effectiveBranch) : rows
-  }, [state.activity, state.orders, effectiveBranch])
+  }, [state.activity, state.orders, effectiveBranch, staffName])
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase()

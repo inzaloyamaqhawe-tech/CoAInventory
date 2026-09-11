@@ -7,7 +7,7 @@ import { branchName } from '../data/branches'
 // usually lands the same qty across several sizes at once. No single
 // "X on hand → Y" preview here since every selected row starts from a
 // different on-hand count; the table below carries that per line instead.
-export default function BulkAdjustModal({ rows, onClose, onConfirm }) {
+export default function BulkAdjustModal({ rows, approvalThreshold, onClose, onConfirm }) {
   const [direction, setDirection] = useState('add') // 'add' | 'remove'
   const [qty, setQty] = useState('')
   const [note, setNote] = useState('')
@@ -16,6 +16,8 @@ export default function BulkAdjustModal({ rows, onClose, onConfirm }) {
   const amount = Math.max(0, Math.floor(Number(qty) || 0))
   const delta = direction === 'add' ? amount : -amount
   const valid = amount > 0 && (direction === 'add' || rows.every(({ row }) => amount <= row.qtyOnHand))
+
+  const willNeedApproval = approvalThreshold != null && amount >= approvalThreshold
 
   function setDir(next) {
     setDirection(next)
@@ -42,7 +44,11 @@ export default function BulkAdjustModal({ rows, onClose, onConfirm }) {
             Cancel
           </button>
           <button className="btn-small" disabled={!valid} onClick={confirm}>
-            {direction === 'add' ? `Add to ${rows.length} lines` : `Remove from ${rows.length} lines`}
+            {willNeedApproval
+              ? `Send ${rows.length} for approval`
+              : direction === 'add'
+                ? `Add to ${rows.length} lines`
+                : `Remove from ${rows.length} lines`}
           </button>
         </>
       }
@@ -88,6 +94,13 @@ export default function BulkAdjustModal({ rows, onClose, onConfirm }) {
           </p>
         )}
       </div>
+
+      {willNeedApproval && (
+        <p className="small" style={{ color: 'var(--warn)', margin: 0 }}>
+          {amount} units per line is at or over the {approvalThreshold}-unit mark — each line goes to the Ops Manager
+          as its own request, and nothing moves until they're approved.
+        </p>
+      )}
 
       <div className="table-wrap" style={{ maxHeight: 200 }}>
         <table className="table">

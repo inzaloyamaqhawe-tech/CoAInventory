@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useStore } from '../state/store.jsx'
+import { useStore, useStaff } from '../state/store.jsx'
 import { useScope } from '../lib/scope'
 import { useBranchFilter } from '../state/branchFilter.jsx'
 import { productOf } from '../lib/derive'
 import { recommendSourceBranch } from '../lib/alerts'
-import { STAFF, branchName, assignableStaffForBranch } from '../data/branches'
+import { branchName } from '../data/branches'
 import { timeAgo } from '../lib/scope'
 import StatusPill from '../components/StatusPill.jsx'
 import Icon from '../components/Icon.jsx'
@@ -24,6 +24,7 @@ const STATUSES = [
 
 export default function Orders() {
   const { state, dispatch } = useStore()
+  const { staffById, assignableStaffForBranch } = useStaff()
   const { staff, isAll } = useScope()
   const { branchId: filterBranch } = useBranchFilter()
   const effectiveBranch = isAll ? filterBranch : staff.branchId
@@ -112,7 +113,7 @@ export default function Orders() {
       </div>
 
       {orders.map((o) => {
-        const owner = STAFF.find((s) => s.id === o.assignedTo)
+        const owner = staffById(o.assignedTo)
         const isMine = o.assignedTo === staff.id
         const isDone = o.status === 'fulfilled'
         const options = assignableStaffForBranch(o.branchId)

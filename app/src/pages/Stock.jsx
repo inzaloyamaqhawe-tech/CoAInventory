@@ -6,6 +6,7 @@ import { productOf } from '../lib/derive'
 import { CATEGORIES } from '../data/catalog'
 import { BRANCHES, branchName } from '../data/branches'
 import { daysOfCover } from '../lib/alerts'
+import { needsApproval, approvalThresholdFor } from '../lib/policy'
 import { exportExcel, exportPDF } from '../lib/exportDocs'
 import StatusPill from '../components/StatusPill.jsx'
 import Pagination from '../components/Pagination.jsx'
@@ -71,7 +72,14 @@ export default function Stock() {
   }
 
   function confirmBulkAdjust(delta, note, meta) {
-    dispatch({ type: 'BULK_ADJUST_STOCK', rowIds: selectedRows.map(({ row }) => row.id), delta, performedBy: staff.id, note, isReturn: meta?.isReturn })
+    if (needsApproval(delta, staff.role)) {
+      // Each line is its own stock movement, so each gets its own request —
+      // the approver can wave through the sizes that check out and reject
+      // the one that doesn't, instead of it being all-or-nothing.
+      selectedRows.forEach(({ row, product }) => submitAdjustment({ row, product, delta, note, isReturn: meta?.isReturn }))
+    } else {
+      dispatch({ type: 'BULK_ADJUST_STOCK', rowIds: selectedRows.map(({ row }) => row.id), delta, performedBy: staff.id, note, isReturn: meta?.isReturn })
+    }
     setBulkAdjusting(false)
     setSelectedIds(new Set())
   }
@@ -83,8 +91,38 @@ export default function Stock() {
     return null
   }
 
+  // One helper for both paths so bulk can't become the way around the
+  // approval rule — a 40-unit write-off is a 40-unit write-off whether it
+  // was typed on one line or twenty.
+  function submitAdjustment({ row, product, delta, note, isReturn }) {
+    if (needsApproval(delta, staff.role)) {
+      dispatch({
+        type: 'REQUEST_CORRECTION',
+        correction: {
+          id: `COR-${Date.now()}-${row.id}`,
+          rowId: row.id,
+          variantSku: row.variantSku,
+          sku: row.sku,
+          size: row.size,
+          productName: product?.name ?? row.sku,
+          branchId: row.branchId,
+          qtyBefore: row.qtyOnHand,
+          delta,
+          note,
+          isReturn: !!isReturn,
+          requestedBy: staff.id,
+          requestedAt: new Date().toISOString(),
+          status: 'pending',
+        },
+      })
+      return true // went to the queue rather than the shelf
+    }
+    dispatch({ type: 'ADJUST_STOCK', rowId: row.id, delta, performedBy: staff.id, note, isReturn })
+    return false
+  }
+
   function confirmAdjust(delta, note, meta) {
-    dispatch({ type: 'ADJUST_STOCK', rowId: adjusting.row.id, delta, performedBy: staff.id, note, isReturn: meta?.isReturn })
+    submitAdjustment({ row: adjusting.row, product: adjusting.product, delta, note, isReturn: meta?.isReturn })
     setAdjusting(null)
   }
 
@@ -261,11 +299,22 @@ export default function Stock() {
       )}
 
       {adjusting && (
-        <AdjustStockModal row={adjusting.row} product={adjusting.product} onClose={() => setAdjusting(null)} onConfirm={confirmAdjust} />
+        <AdjustStockModal
+          row={adjusting.row}
+          product={adjusting.product}
+          approvalThreshold={approvalThresholdFor(staff.role)}
+          onClose={() => setAdjusting(null)}
+          onConfirm={confirmAdjust}
+        />
       )}
 
       {bulkAdjusting && (
-        <BulkAdjustModal rows={selectedRows} onClose={() => setBulkAdjusting(false)} onConfirm={confirmBulkAdjust} />
+        <BulkAdjustModal
+          rows={selectedRows}
+          approvalThreshold={approvalThresholdFor(staff.role)}
+          onClose={() => setBulkAdjusting(false)}
+          onConfirm={confirmBulkAdjust}
+        />
       )}
     </div>
   )

@@ -1,10 +1,10 @@
 import React, { useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { useStore } from '../state/store.jsx'
+import { useStore, useStaff } from '../state/store.jsx'
 import { useScope } from '../lib/scope'
 import { productOf } from '../lib/derive'
 import { recommendSourceBranch } from '../lib/alerts'
-import { STAFF, branchName, staffName, assignableStaffForBranch } from '../data/branches'
+import { branchName } from '../data/branches'
 import { timeAgo } from '../lib/scope'
 import StatusPill from '../components/StatusPill.jsx'
 import Icon from '../components/Icon.jsx'
@@ -17,6 +17,7 @@ const NEXT_LABEL = { new: 'Mark packed', packed: 'Mark ready', ready: 'Mark fulf
 export default function OrderDetail() {
   const { id } = useParams()
   const { state, dispatch } = useStore()
+  const { staffById, staffName, assignableStaffForBranch } = useStaff()
   const { staff } = useScope()
   const isAssociate = staff.role === 'sales_associate'
   const order = state.orders.find((o) => o.id === id)
@@ -53,7 +54,7 @@ export default function OrderDetail() {
     )
   }
 
-  const owner = STAFF.find((s) => s.id === order.assignedTo)
+  const owner = staffById(order.assignedTo)
   const canFulfil = lines.every((l) => l.short === 0)
   const options = assignableStaffForBranch(order.branchId)
   const isDone = order.status === 'fulfilled'

@@ -5,7 +5,7 @@
 // see state/store.jsx.
 
 import { CATALOG } from './catalog'
-import { BRANCHES, STAFF } from './branches'
+import { BRANCHES, SEED_STAFF } from './branches'
 import { recommendSourceBranch } from '../lib/alerts'
 
 function mulberry32(seed) {
@@ -25,7 +25,7 @@ function mulberry32(seed) {
 // data away instead of quietly keeping serving whatever tier probabilities
 // were live the day they first opened the app. Without this, editing this
 // file only ever affects a brand-new browser profile.
-export const DATA_VERSION = 5
+export const DATA_VERSION = 6
 
 const rand = mulberry32(20260908)
 const ri = (min, max) => Math.floor(rand() * (max - min + 1)) + min
@@ -123,7 +123,7 @@ export function generateOrders(stockRows) {
     // A brand-new order has nobody on it yet — assigning it is the
     // operator's own call, not something the system decides for them.
     // Anything further along the flow was necessarily assigned to get there.
-    const assignedTo = status === 'new' ? null : branchId === 'WH' ? 'tumi' : pick(STAFF.filter((s) => s.branchId === branchId).map((s) => s.id)) ?? null
+    const assignedTo = status === 'new' ? null : branchId === 'WH' ? 'tumi' : pick(SEED_STAFF.filter((s) => s.branchId === branchId).map((s) => s.id)) ?? null
     const nItems = ri(1, 3)
     const items = []
     for (let j = 0; j < nItems; j++) {
@@ -157,7 +157,7 @@ export function generateOrders(stockRows) {
   // still 'new' — the exact scenario the reassign-warning modal exists for.
   const candidate = orders.find((o) => o.status === 'new' && o.branchId !== 'WH' && o.items.some((it) => it.qty >= 2))
   if (candidate) {
-    const associate = pick(STAFF.filter((s) => s.branchId === candidate.branchId && s.role === 'sales_associate').map((s) => s.id))
+    const associate = pick(SEED_STAFF.filter((s) => s.branchId === candidate.branchId && s.role === 'sales_associate').map((s) => s.id))
     candidate.assignedTo = associate
     const line = candidate.items.find((it) => it.qty >= 2)
     line.pickedQty = ri(1, line.qty - 1)
@@ -183,7 +183,7 @@ const TASK_LIBRARY = [
 export function generateTasks() {
   const tasks = []
   let n = 1
-  for (const s of STAFF) {
+  for (const s of SEED_STAFF) {
     if (s.role === 'ops_manager' || s.role === 'stock_controller') continue
     const count = ri(2, 4)
     for (let i = 0; i < count; i++) {
@@ -206,7 +206,7 @@ export function generateTasks() {
         status: done ? 'done' : overdue ? 'overdue' : 'pending',
         assignedAt,
         dueAt,
-        createdBy: s.branchId ? STAFF.find((m) => m.branchId === s.branchId && m.role === 'branch_manager')?.id ?? 'naledi' : 'naledi',
+        createdBy: s.branchId ? SEED_STAFF.find((m) => m.branchId === s.branchId && m.role === 'branch_manager')?.id ?? 'naledi' : 'naledi',
       })
     }
   }
@@ -254,7 +254,7 @@ export function generateActivity(stockRows) {
     const row = pick(stockRows)
     const type = pick(types)
     const delta = type === 'sale' ? -ri(1, 2) : type === 'receive' ? ri(2, 10) : ri(-2, 2)
-    const staff = pick(STAFF.filter((s) => s.branchId === row.branchId || s.role === 'stock_controller'))
+    const staff = pick(SEED_STAFF.filter((s) => s.branchId === row.branchId || s.role === 'stock_controller'))
     entries.push({
       id: `MV-${1000 + i}`,
       variantSku: row.variantSku,
@@ -279,7 +279,7 @@ function generateStockRequests(orders, stockLevels) {
   return candidates.map((o, i) => {
     const item = o.items[0]
     const row = rowByVariant(item.variantSku, o.branchId)
-    const associate = STAFF.find((s) => s.branchId === o.branchId && s.role === 'sales_associate')
+    const associate = SEED_STAFF.find((s) => s.branchId === o.branchId && s.role === 'sales_associate')
     const rec = recommendSourceBranch(stockLevels, item.variantSku, item.qty, o.branchId)
     return {
       id: `REQ-${100 + i}`,
@@ -297,17 +297,61 @@ function generateStockRequests(orders, stockLevels) {
   })
 }
 
+// Monthly sales history, per branch, for the longer-range trend chart.
+// This is stored history rather than something derived from the current
+// 14-day figure on the fly, because a trend line has to say something the
+// snapshot doesn't — reshaping today's number into a curve would draw a
+// direction the data never actually had. Seeded like every other figure
+// here, and the newest month is scaled off the same 14-day run rate the
+// rest of the dashboard reads, so the two never contradict each other.
+export function generateSalesHistory(stockRows, months = 6) {
+  const priceOf = (sku) => {
+    const p = CATALOG.find((x) => x.sku === sku)
+    return p?.salePriceCents ?? p?.priceCents ?? 0
+  }
+  const retail = BRANCHES.filter((b) => b.type === 'retail')
+  const now = new Date()
+
+  return retail.flatMap((branch) => {
+    const revenue14d = stockRows
+      .filter((r) => r.branchId === branch.id)
+      .reduce((sum, r) => sum + r.soldLast14d * priceOf(r.sku), 0)
+    const currentMonth = Math.round(revenue14d * 2.1) // ~14 days → a full month
+
+    // Walk backwards from this month, each earlier month a little smaller
+    // on average, with a deterministic wobble so it isn't a clean ramp.
+    let level = currentMonth
+    const points = []
+    for (let back = 0; back < months; back++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - back, 1)
+      points.push({
+        branchId: branch.id,
+        month: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+        label: d.toLocaleDateString('en-ZA', { month: 'short', year: '2-digit' }),
+        revenue: Math.max(0, Math.round(level)),
+        units: Math.max(0, Math.round(level / 90000)),
+      })
+      level = level * (0.90 + rand() * 0.13) // each older month ~90–103% of the next
+    }
+    return points.reverse()
+  })
+}
+
 export function buildInitialState() {
   const stockLevels = generateStockLevels()
   const orders = generateOrders(stockLevels)
   return {
     dataVersion: DATA_VERSION,
+    staff: SEED_STAFF.map((s) => ({ ...s, active: true })),
     stockLevels,
     orders,
     tasks: generateTasks(),
     transfers: generateTransfers(stockLevels),
     activity: generateActivity(stockLevels),
     stockRequests: generateStockRequests(orders, stockLevels),
+    salesHistory: generateSalesHistory(stockLevels),
+    pendingCorrections: [],
+    seenIds: {},
     alertsDismissed: [],
   }
 }

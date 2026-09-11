@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
-import { useStore } from '../state/store.jsx'
+import { useStore, useStaff } from '../state/store.jsx'
 import { useScope } from '../lib/scope'
-import { STAFF, staffName } from '../data/branches'
+
 import { productOf } from '../lib/derive'
 import Icon from './Icon.jsx'
 import Modal from './Modal.jsx'
@@ -13,12 +13,18 @@ import Modal from './Modal.jsx'
 // decision, not a silent overwrite.
 export default function ReassignControl({ order, options }) {
   const { dispatch } = useStore()
+  const { staffById, staffName } = useStaff()
   const { staff } = useScope()
   const [pendingId, setPendingId] = useState(undefined) // undefined = no confirm open
+  const [reason, setReason] = useState('')
 
-  const owner = STAFF.find((s) => s.id === order.assignedTo)
+  const owner = staffById(order.assignedTo)
   const pickedItems = order.items.filter((it) => it.pickedQty > 0)
   const hasProgress = pickedItems.length > 0 && !order.items.every((it) => it.pickedQty >= it.qty)
+  // Taking half-picked work off someone is the one reassignment that always
+  // needs a stated reason — it's the case where somebody will later ask why
+  // their box moved, and "it just did" isn't an answer.
+  const reasonValid = reason.trim().length >= 3
 
   function handleChange(e) {
     const newId = e.target.value || null
@@ -30,14 +36,23 @@ export default function ReassignControl({ order, options }) {
     }
   }
 
+  function closeConfirm() {
+    setPendingId(undefined)
+    setReason('')
+  }
+
   function confirmReassign() {
-    const newOwner = STAFF.find((s) => s.id === pendingId)
+    if (!reasonValid) return
     const lines = pickedItems
       .map((it) => `${it.pickedQty}/${it.qty}× ${productOf(it.sku)?.name ?? it.sku}`)
       .join(', ')
-    const note = `${owner?.name ?? 'Previous assignee'} already picked ${lines} — check with them before continuing.`
+    // The automatic part (what's already picked) and the human part (why
+    // it's moving) both travel with the handoff — the new assignee needs
+    // the first to finish the box, and everyone after needs the second to
+    // understand why the order changed hands mid-pick.
+    const note = `${owner?.name ?? 'Previous assignee'} already picked ${lines} — check with them before continuing. Reason: ${reason.trim()}`
     dispatch({ type: 'ASSIGN_ORDER', orderId: order.id, staffId: pendingId, note, performedBy: staff.id })
-    setPendingId(undefined)
+    closeConfirm()
   }
 
   return (
@@ -59,13 +74,13 @@ export default function ReassignControl({ order, options }) {
         <Modal
           title="Reassign an order already in progress"
           subtitle={`${order.id} · currently with ${owner?.name ?? 'someone'}`}
-          onClose={() => setPendingId(undefined)}
+          onClose={closeConfirm}
           footer={
             <>
-              <button className="btn-small btn-ghost" onClick={() => setPendingId(undefined)}>
+              <button className="btn-small btn-ghost" onClick={closeConfirm}>
                 Cancel
               </button>
-              <button className="btn-small" onClick={confirmReassign}>
+              <button className="btn-small" disabled={!reasonValid} onClick={confirmReassign}>
                 Reassign to {staffName(pendingId) || 'Unassigned'} anyway
               </button>
             </>
@@ -85,6 +100,23 @@ export default function ReassignControl({ order, options }) {
             If you proceed, {staffName(pendingId) || 'the new assignee'} takes over with a note about what's already
             picked — they'll need to check with {owner?.name?.split(' ')[0]} for those items before finishing the box.
           </p>
+
+          <div style={{ marginTop: 14 }}>
+            <span className="field-label">Why is it moving? (required)</span>
+            <textarea
+              className="textarea"
+              placeholder="e.g. Shift ended, or called to the till"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              autoFocus
+            />
+            {!reasonValid && (
+              <p className="muted small" style={{ marginTop: 6 }}>
+                This goes on the record with the handoff, so {owner?.name?.split(' ')[0] ?? 'the current assignee'} and
+                anyone reading it later can see why.
+              </p>
+            )}
+          </div>
         </Modal>
       )}
     </>

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState } from 'react'
-import { STAFF } from '../data/branches'
+import { useStaff } from './store.jsx'
 
 const SessionCtx = createContext(null)
 
@@ -10,6 +10,7 @@ const SessionCtx = createContext(null)
 // would once it's built.
 export function SessionProvider({ children }) {
   const [staffId, setStaffId] = useState(null)
+  const { staffById } = useStaff()
 
   function signIn(id) {
     setStaffId(id)
@@ -18,7 +19,11 @@ export function SessionProvider({ children }) {
     setStaffId(null)
   }
 
-  const staff = STAFF.find((s) => s.id === staffId) ?? null
+  // Resolved against the live roster, so deactivating someone drops them out
+  // of their own session on the next render rather than leaving a
+  // deactivated person signed in and still working.
+  const found = staffId ? staffById(staffId) : null
+  const staff = found && found.active !== false ? found : null
   return <SessionCtx.Provider value={{ staff, signIn, signOut }}>{children}</SessionCtx.Provider>
 }
 
