@@ -25,12 +25,12 @@ function mulberry32(seed) {
 // data away instead of quietly keeping serving whatever tier probabilities
 // were live the day they first opened the app. Without this, editing this
 // file only ever affects a brand-new browser profile.
-export const DATA_VERSION = 6
+export const DATA_VERSION = 7
 
 const rand = mulberry32(20260908)
 const ri = (min, max) => Math.floor(rand() * (max - min + 1)) + min
 const pick = (arr) => arr[Math.floor(rand() * arr.length)]
-const WH = 'WH'
+const STUDIO = 'STUDIO'
 
 // Category-level stocking behaviour: the warehouse buffer and the reorder
 // point staff would actually set for that category. Retail quantities are
@@ -72,7 +72,7 @@ export function generateStockLevels() {
     const profile = CATEGORY_PROFILE[product.category]
     for (const variant of product.variants) {
       for (const branchId of BRANCHES.map((b) => b.id)) {
-        const isWarehouse = branchId === WH
+        const isWarehouse = branchId === STUDIO
         const { qty, tier } = isWarehouse ? { qty: ri(...profile.wh), tier: 'wh' } : retailLine(profile.reorder)
         // Recent sell-through follows directly from why the line is at the
         // qty it's at, rather than being re-rolled independently of it.
@@ -117,13 +117,16 @@ export function generateOrders(stockRows) {
   const statuses = ['new', 'new', 'new', 'packed', 'ready', 'fulfilled', 'fulfilled']
   const orders = []
   for (let i = 0; i < 16; i++) {
-    const branchId = pick(BRANCHES.map((b) => b.id))
-    const source = branchId === 'WH' ? 'online' : rand() < 0.55 ? 'in_store' : 'online'
+    // Customer orders land against a selling channel (Store, Online, Market)
+    // — the Studio is manufacturing/source only and never takes orders
+    // directly, matching the real business model.
+    const branchId = pick(BRANCHES.filter((b) => b.type === 'retail').map((b) => b.id))
+    const source = branchId === 'ONLINE' ? 'online' : branchId === 'MARKET' ? 'in_store' : rand() < 0.55 ? 'in_store' : 'online'
     const status = pick(statuses)
     // A brand-new order has nobody on it yet — assigning it is the
     // operator's own call, not something the system decides for them.
     // Anything further along the flow was necessarily assigned to get there.
-    const assignedTo = status === 'new' ? null : branchId === 'WH' ? 'tumi' : pick(SEED_STAFF.filter((s) => s.branchId === branchId).map((s) => s.id)) ?? null
+    const assignedTo = status === 'new' ? null : pick(SEED_STAFF.filter((s) => s.branchId === branchId).map((s) => s.id)) ?? null
     const nItems = ri(1, 3)
     const items = []
     for (let j = 0; j < nItems; j++) {
@@ -155,7 +158,7 @@ export function generateOrders(stockRows) {
 
   // One illustrative in-progress order: assigned and partway picked while
   // still 'new' — the exact scenario the reassign-warning modal exists for.
-  const candidate = orders.find((o) => o.status === 'new' && o.branchId !== 'WH' && o.items.some((it) => it.qty >= 2))
+  const candidate = orders.find((o) => o.status === 'new' && o.branchId !== 'STUDIO' && o.items.some((it) => it.qty >= 2))
   if (candidate) {
     const associate = pick(SEED_STAFF.filter((s) => s.branchId === candidate.branchId && s.role === 'sales_associate').map((s) => s.id))
     candidate.assignedTo = associate
@@ -184,7 +187,7 @@ export function generateTasks() {
   const tasks = []
   let n = 1
   for (const s of SEED_STAFF) {
-    if (s.role === 'ops_manager' || s.role === 'stock_controller') continue
+    if (s.role === 'ops_manager' || s.role === 'owner' || s.role === 'stock_controller') continue
     const count = ri(2, 4)
     for (let i = 0; i < count; i++) {
       const [title, type] = pick(TASK_LIBRARY)
@@ -229,7 +232,7 @@ export function generateTransfers(stockRows) {
   statuses.forEach((status, idx) => {
     const sku = pool[idx % pool.length]
     const rows = bySku(sku)
-    const from = pick(rows.filter((r) => r.branchId !== 'WH'))
+    const from = pick(rows.filter((r) => r.branchId !== 'STUDIO'))
     const to = pick(rows.filter((r) => r.branchId !== from?.branchId))
     if (!from || !to) return
     transfers.push({
@@ -275,7 +278,7 @@ export function generateActivity(stockRows) {
 // feed itself (see 04-ALERTS-AND-INTELLIGENCE.md's "who sees it" column).
 function generateStockRequests(orders, stockLevels) {
   const rowByVariant = (variantSku, branchId) => stockLevels.find((r) => r.variantSku === variantSku && r.branchId === branchId)
-  const candidates = orders.filter((o) => o.source === 'in_store' && o.branchId !== 'WH').slice(0, 2)
+  const candidates = orders.filter((o) => o.source === 'in_store' && o.branchId !== 'STUDIO').slice(0, 2)
   return candidates.map((o, i) => {
     const item = o.items[0]
     const row = rowByVariant(item.variantSku, o.branchId)
@@ -343,6 +346,11 @@ export function buildInitialState() {
   return {
     dataVersion: DATA_VERSION,
     staff: SEED_STAFF.map((s) => ({ ...s, active: true })),
+    // The live product catalogue — seeded from the built-in range, then
+    // extended in-app via CSV bulk upload (Products) or a discount edit.
+    // See useCatalog() in state/store.jsx; nothing outside seeding should
+    // read the static CATALOG export directly after this.
+    catalog: CATALOG,
     stockLevels,
     orders,
     tasks: generateTasks(),

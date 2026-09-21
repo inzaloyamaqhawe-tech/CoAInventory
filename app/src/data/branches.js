@@ -1,13 +1,15 @@
 export const BRANCHES = [
-  { id: 'SAN', name: 'Sandton City', type: 'retail', city: 'Johannesburg' },
-  { id: 'CPT', name: 'V&A Waterfront', type: 'retail', city: 'Cape Town' },
-  { id: 'DBN', name: 'Gateway', type: 'retail', city: 'Durban' },
-  { id: 'WH', name: 'Online Fulfilment', type: 'warehouse', city: 'Johannesburg' },
+  { id: 'STORE', name: 'Store', type: 'retail', city: 'Johannesburg' },
+  { id: 'ONLINE', name: 'Online', type: 'retail', city: 'Johannesburg' },
+  { id: 'MARKET', name: 'Market', type: 'retail', city: 'Johannesburg' },
+  { id: 'STUDIO', name: 'Studio', type: 'warehouse', city: 'Johannesburg' },
 ]
 
 export const ROLES = {
   ops_manager: { label: 'Operations Manager', scope: 'all' },
+  owner: { label: 'Owner', scope: 'all' },
   branch_manager: { label: 'Branch Manager', scope: 'branch' },
+  administrator: { label: 'Administrator', scope: 'branch' },
   sales_associate: { label: 'Sales Associate', scope: 'branch' },
   stock_controller: { label: 'Stock Controller', scope: 'all' },
 }
@@ -18,32 +20,34 @@ export const ROLES = {
 // array directly, or a newly hired/deactivated person won't be reflected.
 export const SEED_STAFF = [
   { id: 'naledi', name: 'Naledi Mokoena', role: 'ops_manager', branchId: null, initials: 'NM' },
-  { id: 'tumi', name: 'Tumi Radebe', role: 'stock_controller', branchId: 'WH', initials: 'TR' },
-  { id: 'kabelo', name: 'Kabelo Sithole', role: 'branch_manager', branchId: 'SAN', initials: 'KS' },
-  { id: 'amahle', name: 'Amahle Ndlovu', role: 'sales_associate', branchId: 'SAN', initials: 'AN' },
-  { id: 'jordan', name: 'Jordan Pillay', role: 'sales_associate', branchId: 'SAN', initials: 'JP' },
-  { id: 'chloe', name: 'Chloé van Wyk', role: 'branch_manager', branchId: 'CPT', initials: 'CW' },
-  { id: 'lwazi', name: 'Lwazi Dlamini', role: 'sales_associate', branchId: 'CPT', initials: 'LD' },
-  { id: 'megan', name: 'Megan Adams', role: 'sales_associate', branchId: 'CPT', initials: 'MA' },
-  { id: 'sipho', name: 'Sipho Zulu', role: 'branch_manager', branchId: 'DBN', initials: 'SZ' },
-  { id: 'precious', name: 'Precious Naidoo', role: 'sales_associate', branchId: 'DBN', initials: 'PN' },
-  { id: 'ryan', name: 'Ryan Govender', role: 'sales_associate', branchId: 'DBN', initials: 'RG' },
+  { id: 'lerato', name: 'Lerato Mahlangu', role: 'owner', branchId: null, initials: 'LM' },
+  { id: 'thabo', name: 'Thabo Nkosi', role: 'administrator', branchId: 'STORE', initials: 'TN' },
+  { id: 'tumi', name: 'Tumi Radebe', role: 'stock_controller', branchId: 'STUDIO', initials: 'TR' },
+  { id: 'kabelo', name: 'Kabelo Sithole', role: 'branch_manager', branchId: 'STORE', initials: 'KS' },
+  { id: 'amahle', name: 'Amahle Ndlovu', role: 'sales_associate', branchId: 'STORE', initials: 'AN' },
+  { id: 'jordan', name: 'Jordan Pillay', role: 'sales_associate', branchId: 'STORE', initials: 'JP' },
+  { id: 'chloe', name: 'Chloé van Wyk', role: 'branch_manager', branchId: 'ONLINE', initials: 'CW' },
+  { id: 'lwazi', name: 'Lwazi Dlamini', role: 'sales_associate', branchId: 'ONLINE', initials: 'LD' },
+  { id: 'megan', name: 'Megan Adams', role: 'sales_associate', branchId: 'ONLINE', initials: 'MA' },
+  { id: 'sipho', name: 'Sipho Zulu', role: 'branch_manager', branchId: 'MARKET', initials: 'SZ' },
+  { id: 'precious', name: 'Precious Naidoo', role: 'sales_associate', branchId: 'MARKET', initials: 'PN' },
+  { id: 'ryan', name: 'Ryan Govender', role: 'sales_associate', branchId: 'MARKET', initials: 'RG' },
 ]
 
 export function branchName(id) {
   return BRANCHES.find((b) => b.id === id)?.name ?? id
 }
 
-// Who can actually be handed work at a given branch — the warehouse is run
+// Who can actually be handed work at a given branch — the studio is run
 // by its stock controller, a shop floor by its own manager and associates.
 // Single source of truth for order assignment, task assignment and task
-// reassignment alike, so "Durban work never lands on a Sandton person" is
+// reassignment alike, so "Market work never lands on a Store person" is
 // enforced the same way everywhere instead of three places that could drift.
 // Takes the roster as an argument because the live one is store state now;
 // useStaff() in state/store.jsx binds this to it for components.
 export function assignableStaffFrom(staffList, branchId) {
   const active = staffList.filter((s) => s.active !== false)
-  if (branchId === 'WH') return active.filter((s) => s.role === 'stock_controller')
+  if (branchId === 'STUDIO') return active.filter((s) => s.role === 'stock_controller')
   return active.filter((s) => s.branchId === branchId && (s.role === 'sales_associate' || s.role === 'branch_manager'))
 }
 

@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import Modal from './Modal.jsx'
 import { branchName } from '../data/branches'
 
-export default function AdjustStockModal({ row, product, approvalThreshold, onClose, onConfirm }) {
+export default function AdjustStockModal({ row, product, onClose, onConfirm }) {
   const [direction, setDirection] = useState('add') // 'add' | 'remove'
   const [qty, setQty] = useState('')
   const [note, setNote] = useState('')
@@ -11,10 +11,8 @@ export default function AdjustStockModal({ row, product, approvalThreshold, onCl
   const amount = Math.max(0, Math.floor(Number(qty) || 0))
   const delta = direction === 'add' ? amount : -amount
   const nextQty = Math.max(0, row.qtyOnHand + delta)
-  const valid = amount > 0 && (direction === 'add' || amount <= row.qtyOnHand)
-  // Past this, the change becomes a request for the Ops Manager rather
-  // than something that moves stock straight away.
-  const willNeedApproval = approvalThreshold != null && amount >= approvalThreshold
+  const noteValid = note.trim().length >= 3
+  const valid = amount > 0 && (direction === 'add' || amount <= row.qtyOnHand) && noteValid
   const soldLast14d = row.soldLast14d ?? 0
   const soldAfterReturn = isReturn ? Math.max(0, soldLast14d - amount) : soldLast14d
 
@@ -25,11 +23,7 @@ export default function AdjustStockModal({ row, product, approvalThreshold, onCl
 
   function confirm() {
     if (!valid) return
-    onConfirm(
-      delta,
-      note.trim() || (isReturn ? 'Customer return' : direction === 'add' ? 'Stock received' : 'Stock removed'),
-      { isReturn: direction === 'add' && isReturn }
-    )
+    onConfirm(delta, note.trim(), { isReturn: direction === 'add' && isReturn })
   }
 
   return (
@@ -43,7 +37,7 @@ export default function AdjustStockModal({ row, product, approvalThreshold, onCl
             Cancel
           </button>
           <button className="btn-small" disabled={!valid} onClick={confirm}>
-            {willNeedApproval ? 'Send for approval' : isReturn ? 'Record return' : direction === 'add' ? 'Add to stock' : 'Remove from stock'}
+            Send for approval
           </button>
         </>
       }
@@ -102,21 +96,19 @@ export default function AdjustStockModal({ row, product, approvalThreshold, onCl
         </p>
       )}
 
-      {willNeedApproval && (
-        <p className="small" style={{ color: 'var(--warn)', margin: 0 }}>
-          {amount} units is at or over the {approvalThreshold}-unit mark, so this goes to the Ops Manager to approve
-          before the count changes. Stock stays as it is until then.
-        </p>
-      )}
+      <p className="small" style={{ color: 'var(--warn)', margin: 0 }}>
+        Every adjustment goes to the Operations Manager and the Owner to approve — stock stays as it is until both sign off.
+      </p>
 
       <div>
-        <span className="field-label">Note{willNeedApproval ? ' — say what happened' : ' (optional)'}</span>
+        <span className="field-label">Note — say what happened</span>
         <textarea
           className="textarea"
-          placeholder={isReturn ? 'e.g. Wrong size, no matching size in stock — refunded' : direction === 'add' ? 'e.g. Delivery from warehouse' : 'e.g. Damaged, count correction'}
+          placeholder={isReturn ? 'e.g. Wrong size, no matching size in stock — refunded' : direction === 'add' ? 'e.g. Delivery from studio' : 'e.g. Damaged, count correction'}
           value={note}
           onChange={(e) => setNote(e.target.value)}
         />
+        {!noteValid && note.length > 0 && <p className="small" style={{ color: 'var(--critical)', margin: '4px 0 0' }}>A short reason is required.</p>}
       </div>
     </Modal>
   )

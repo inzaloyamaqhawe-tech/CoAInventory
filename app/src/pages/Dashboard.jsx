@@ -65,7 +65,7 @@ export default function Dashboard() {
   const pickups = state.orders.filter((o) => o.status === 'ready' && (effectiveBranch ? o.branchId === effectiveBranch : true))
   const isAssociate = staff.role === 'sales_associate'
   const dateLabel = new Date().toLocaleDateString('en-ZA', { weekday: 'long', day: 'numeric', month: 'long' })
-  const scopeLabel = effectiveBranch ? branchName(effectiveBranch) : `All branches · ${BRANCHES.filter((b) => b.type === 'retail').length} stores`
+  const scopeLabel = effectiveBranch ? branchName(effectiveBranch) : `All branches · ${BRANCHES.filter((b) => b.type === 'retail').length} channels`
 
   return (
     <div className="page">

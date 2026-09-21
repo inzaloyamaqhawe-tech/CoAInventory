@@ -5,7 +5,8 @@ import { useBranchFilter } from '../state/branchFilter.jsx'
 import { computeAlerts, computeTransferSuggestions, notificationIds, TRANSFER_NEXT_LABEL } from '../lib/alerts'
 import { productOf } from '../lib/derive'
 import { exportExcel, exportPDF } from '../lib/exportDocs'
-import { BRANCHES, branchName } from '../data/branches'
+import { BRANCHES, ROLES, branchName } from '../data/branches'
+import { canApproveCorrection, APPROVER_ROLES } from '../lib/policy'
 import { timeAgo } from '../lib/scope'
 import StatusPill from '../components/StatusPill.jsx'
 import Pagination from '../components/Pagination.jsx'
@@ -42,14 +43,20 @@ function ManualPullPicker({ request, stockLevels, onPull }) {
   )
 }
 
-// A large correction waiting on the Ops Manager. Rejecting takes a reason
-// for the same reason reassigning half-picked work does — the person who
-// raised it is owed an answer they can act on, not just a "no".
-function CorrectionRow({ correction, staffName, onApprove, onReject }) {
+// A correction waiting on BOTH named approvers — the Operations Manager and
+// the Owner, each a distinct person from the requester and from each other.
+// Rejecting takes a reason for the same reason reassigning half-picked work
+// does — the person who raised it is owed an answer they can act on, not
+// just a "no". A rejection from either approver kills the request outright;
+// there's no case where the other approval still matters after that.
+function CorrectionRow({ correction, staffName, viewerRole, viewerId, onApprove, onReject }) {
   const [rejecting, setRejecting] = useState(false)
   const [reason, setReason] = useState('')
   const reasonValid = reason.trim().length >= 3
   const sign = correction.delta >= 0 ? '+' : ''
+  const approvals = correction.approvals ?? {}
+  const isRequester = correction.requestedBy === viewerId
+  const alreadyApprovedByViewer = !!approvals[viewerRole]
 
   return (
     <div className="alert alert-warning">
@@ -67,6 +74,13 @@ function CorrectionRow({ correction, staffName, onApprove, onReject }) {
           {staffName(correction.requestedBy)} · {correction.qtyBefore} on hand now &rarr;{' '}
           {Math.max(0, correction.qtyBefore + correction.delta)} if approved · {timeAgo(correction.requestedAt)}
           {correction.note ? ` · ${correction.note}` : ''}
+        </p>
+        <p className="meta">
+          {APPROVER_ROLES.map((role) => (
+            <span key={role} style={{ marginRight: 12 }}>
+              {ROLES[role].label}: {approvals[role] ? `approved by ${staffName(approvals[role].by)}` : 'waiting'}
+            </span>
+          ))}
         </p>
         {rejecting && (
           <div style={{ marginTop: 8 }}>
@@ -91,10 +105,14 @@ function CorrectionRow({ correction, staffName, onApprove, onReject }) {
               Cancel
             </button>
           </>
+        ) : isRequester ? (
+          <span className="muted small">You requested this — someone else must approve it.</span>
+        ) : alreadyApprovedByViewer ? (
+          <span className="muted small">You've approved — waiting on the other sign-off.</span>
         ) : (
           <>
             <button className="btn-small btn-xs" onClick={() => onApprove(correction)}>
-              Approve
+              Approve as {ROLES[viewerRole].label}
             </button>
             <button className="btn-small btn-ghost btn-xs" onClick={() => setRejecting(true)}>
               Reject
@@ -160,19 +178,19 @@ export default function Alerts() {
     setSelectedRequestIds(new Set())
   }
 
-  // Only the Ops Manager sees this queue — they're the second pair of eyes
-  // the threshold exists to bring in, so showing it to anyone else would
-  // just be a list they can look at and not act on.
+  // Only the two named approver roles (Ops Manager, Owner) see this queue —
+  // they're the two pairs of eyes every adjustment now requires, so showing
+  // it to anyone else would just be a list they can look at and not act on.
   const pendingCorrections = useMemo(
     () =>
-      staff.role === 'ops_manager'
+      canApproveCorrection(staff.role)
         ? (state.pendingCorrections ?? []).filter((c) => c.status === 'pending' && (!effectiveBranch || c.branchId === effectiveBranch))
         : [],
     [state.pendingCorrections, staff.role, effectiveBranch]
   )
 
   function approveCorrection(correction) {
-    dispatch({ type: 'APPROVE_CORRECTION', correctionId: correction.id, approvedBy: staff.id })
+    dispatch({ type: 'APPROVE_CORRECTION', correctionId: correction.id, approverId: staff.id, approverRole: staff.role })
   }
 
   function rejectCorrection(correction, reason) {
@@ -213,7 +231,7 @@ export default function Alerts() {
           <div>
             <h1>Alerts</h1>
             <p className="muted">
-              {alerts.length + suggestions.length} open · computed live from current stock · Operations Manager &amp; Branch Manager tool
+              {alerts.length + suggestions.length} open · computed live from current stock · Operations, Owner &amp; Branch Manager tool
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
@@ -234,7 +252,15 @@ export default function Alerts() {
             <span className="muted small">{pendingCorrections.length}</span>
           </div>
           {pendingCorrections.map((c) => (
-            <CorrectionRow key={c.id} correction={c} staffName={staffName} onApprove={approveCorrection} onReject={rejectCorrection} />
+            <CorrectionRow
+              key={c.id}
+              correction={c}
+              staffName={staffName}
+              viewerRole={staff.role}
+              viewerId={staff.id}
+              onApprove={approveCorrection}
+              onReject={rejectCorrection}
+            />
           ))}
         </section>
       )}

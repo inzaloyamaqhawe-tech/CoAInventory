@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useMemo, useReducer } from 'react'
 import { buildInitialState, DATA_VERSION } from '../data/generate'
-import { assignableStaffFrom } from '../data/branches'
+import { assignableStaffFrom, BRANCHES } from '../data/branches'
+import { APPROVER_ROLES, isFullyApproved } from '../lib/policy'
+import { registerProducts } from '../lib/derive'
 
 const STORAGE_KEY = 'coa-ops-pass-v1'
 const StoreCtx = createContext(null)
@@ -29,7 +31,7 @@ function load() {
       // assignment timestamps existed, and Team.jsx's "given at" column needs
       // every task to have one.
       const tasks = (parsed.tasks ?? []).map((t) => ({ assignedAt: t.dueAt ?? new Date().toISOString(), ...t }))
-      return { stockRequests: [], seenIds: {}, pendingCorrections: [], salesHistory: [], staff: [], ...parsed, orders, tasks }
+      return { stockRequests: [], seenIds: {}, pendingCorrections: [], salesHistory: [], staff: [], catalog: [], ...parsed, orders, tasks }
     }
   } catch {
     /* ignore corrupt storage, fall through to a fresh seed */
@@ -349,17 +351,67 @@ function reducer(state, action) {
       return { ...state, staff }
     }
 
+    // ---------- product catalogue ----------
+    // CSV bulk upload lands here — every new SKU gets a stock row at every
+    // branch (starting at 0 on hand) so it shows up in Stock/Alerts the
+    // moment it's imported, instead of only existing on the Products page
+    // until someone happens to receive it in.
+    case 'ADD_PRODUCTS': {
+      const existing = new Set(state.catalog.map((p) => p.sku))
+      const added = action.products.filter((p) => !existing.has(p.sku))
+      const now = new Date().toISOString()
+      const newRows = added.flatMap((p) =>
+        BRANCHES.flatMap((b) =>
+          p.variants.map((v) => ({
+            id: `${v.variantSku}@${b.id}`,
+            sku: p.sku,
+            variantSku: v.variantSku,
+            size: v.size,
+            branchId: b.id,
+            qtyOnHand: 0,
+            reorderPoint: 3,
+            parLevel: 6,
+            soldLast14d: 0,
+            lastCountedAt: now,
+          }))
+        )
+      )
+      return { ...state, catalog: [...state.catalog, ...added], stockLevels: [...state.stockLevels, ...newRows] }
+    }
+
+    case 'SET_DISCOUNT': {
+      const catalog = state.catalog.map((p) => (p.sku === action.sku ? { ...p, discountPct: action.discountPct || 0 } : p))
+      return { ...state, catalog }
+    }
+
     // ---------- stock corrections needing a second pair of eyes ----------
-    // A big adjustment by anyone who isn't the Ops Manager parks here
-    // instead of moving stock: the requester states what and why, and
-    // somebody else signs it off. Nothing changes on the shelf until then.
+    // Every adjustment — any size, from anyone able to propose one — parks
+    // here instead of moving stock directly: the requester states what and
+    // why, and it only actually applies once both named approver roles
+    // (Operations Manager and Owner) have separately signed off. Nothing
+    // changes on the shelf until then.
     case 'REQUEST_CORRECTION': {
-      return { ...state, pendingCorrections: [action.correction, ...state.pendingCorrections] }
+      const correction = { approvals: {}, ...action.correction }
+      return { ...state, pendingCorrections: [correction, ...state.pendingCorrections] }
     }
 
     case 'APPROVE_CORRECTION': {
       const correction = state.pendingCorrections.find((c) => c.id === action.correctionId)
-      if (!correction) return state
+      if (!correction || correction.status !== 'pending') return state
+      // The requester can't also be an approver, and a role only counts once
+      // — re-clicking Approve as the same role doesn't fill the other seat.
+      if (!APPROVER_ROLES.includes(action.approverRole)) return state
+      if (action.approverId === correction.requestedBy) return state
+      if (correction.approvals?.[action.approverRole]) return state
+
+      const approvals = { ...correction.approvals, [action.approverRole]: { by: action.approverId, at: new Date().toISOString() } }
+      const nowComplete = isFullyApproved({ ...correction, approvals })
+
+      if (!nowComplete) {
+        const pendingCorrections = state.pendingCorrections.map((c) => (c.id === action.correctionId ? { ...c, approvals } : c))
+        return { ...state, pendingCorrections }
+      }
+
       const returning = correction.isReturn && correction.delta > 0
       const stockLevels = state.stockLevels.map((r) => {
         if (r.id !== correction.rowId) return r
@@ -368,11 +420,11 @@ function reducer(state, action) {
         return { ...r, qtyOnHand, soldLast14d, lastCountedAt: new Date().toISOString() }
       })
       const pendingCorrections = state.pendingCorrections.map((c) =>
-        c.id === action.correctionId ? { ...c, status: 'approved', decidedBy: action.approvedBy, decidedAt: new Date().toISOString() } : c
+        c.id === action.correctionId ? { ...c, approvals, status: 'approved', decidedAt: new Date().toISOString() } : c
       )
-      // One ledger row for one stock movement — the approval *is* the
-      // movement, so it doesn't also get a separate plain adjustment entry
-      // that would double-count the same units.
+      // One ledger row for one stock movement — the second, completing
+      // approval *is* the movement, so it doesn't also get a separate plain
+      // adjustment entry that would double-count the same units.
       const activity = [
         {
           id: `ACT-${Date.now()}`,
@@ -382,7 +434,7 @@ function reducer(state, action) {
           size: correction.size,
           branchId: correction.branchId,
           qtyDelta: correction.delta,
-          performedBy: action.approvedBy,
+          performedBy: action.approverId,
           requestedBy: correction.requestedBy,
           note: correction.note,
           at: new Date().toISOString(),
@@ -394,7 +446,7 @@ function reducer(state, action) {
 
     case 'REJECT_CORRECTION': {
       const correction = state.pendingCorrections.find((c) => c.id === action.correctionId)
-      if (!correction) return state
+      if (!correction || correction.status !== 'pending') return state
       const pendingCorrections = state.pendingCorrections.map((c) =>
         c.id === action.correctionId
           ? { ...c, status: 'rejected', decidedBy: action.rejectedBy, decidedAt: new Date().toISOString(), decisionReason: action.reason }
@@ -446,6 +498,12 @@ export function StoreProvider({ children }) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
   }, [state])
 
+  // Keep lib/derive.js's product lookup in sync with the live catalogue —
+  // synchronously during render, not in an effect, so a component reading
+  // productOf()/priceOf() in the same render that just imported or
+  // discounted a product sees it immediately rather than one render behind.
+  registerProducts(state.catalog ?? [])
+
   const value = useMemo(() => ({ state, dispatch }), [state])
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>
 }
@@ -475,4 +533,21 @@ export function useStaff() {
       assignableStaffForBranch: (branchId) => assignableStaffFrom(list, branchId),
     }
   }, [state.staff])
+}
+
+// The live product catalogue — seeded stock plus anything imported since
+// via CSV bulk upload, with per-product discounts applied. Read this (or
+// lib/derive.js's productOf/priceOf, which stay in sync with it) rather
+// than the static data/catalog.js export, or a freshly-imported SKU won't
+// show up on the Products page.
+export function useCatalog() {
+  const { state } = useStore()
+  return useMemo(() => {
+    const list = state.catalog ?? []
+    const bySku = new Map(list.map((p) => [p.sku, p]))
+    return {
+      catalog: list,
+      productBySku: (sku) => bySku.get(sku) ?? null,
+    }
+  }, [state.catalog])
 }

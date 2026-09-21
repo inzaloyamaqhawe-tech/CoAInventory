@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { useStore, useStaff } from '../state/store.jsx'
+import { useStore, useStaff, useCatalog } from '../state/store.jsx'
 import { useScope, formatGivenAt } from '../lib/scope'
 import { useBranchFilter } from '../state/branchFilter.jsx'
-import { topMover, coldest, taskCompletion, productOf } from '../lib/derive'
+import { topMover, coldest, taskCompletion, productOf, discountedPriceCents } from '../lib/derive'
+import { formatZAR } from '../data/catalog'
 import { exportExcel, exportPDF } from '../lib/exportDocs'
 import { BRANCHES, branchName } from '../data/branches'
 import StatusPill from '../components/StatusPill.jsx'
@@ -90,16 +91,35 @@ const TYPE_FILTERS = [
 export default function Reports() {
   const { state } = useStore()
   const { allStaff, staffName } = useStaff()
+  const { catalog } = useCatalog()
   const { staff, isAll } = useScope()
   const { branchId: filterBranch } = useBranchFilter()
   const effectiveBranch = isAll ? filterBranch : staff.branchId
+
+  // Every product currently marked down — original price next to the
+  // discounted sale price, plus what that discount actually cost against
+  // what it sold, so revenue stays auditable rather than the markdown
+  // quietly disappearing into the sales number.
+  const markdownRows = useMemo(() => {
+    return catalog
+      .filter((p) => p.discountPct || p.salePriceCents)
+      .map((p) => {
+        const variantSkus = p.variants.map((v) => v.variantSku)
+        const units = state.stockLevels
+          .filter((r) => variantSkus.includes(r.variantSku) && (!effectiveBranch || r.branchId === effectiveBranch))
+          .reduce((s, r) => s + r.soldLast14d, 0)
+        const originalCents = p.priceCents
+        const discountedCents = discountedPriceCents(p)
+        return { product: p, units, originalCents, discountedCents, originalRevenue: units * originalCents, discountedRevenue: units * discountedCents }
+      })
+  }, [catalog, state.stockLevels, effectiveBranch])
 
   const [q, setQ] = useState('')
   const [typeFilter, setTypeFilter] = useState('All')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(25)
 
-  const staffRows = allStaff.filter((s) => (isAll ? s.role !== 'ops_manager' && s.role !== 'stock_controller' : s.branchId === staff.branchId))
+  const staffRows = allStaff.filter((s) => (isAll ? s.role !== 'ops_manager' && s.role !== 'owner' && s.role !== 'stock_controller' : s.branchId === staff.branchId))
   const staffCompletionRows = staffRows
     .map((s) => ({ s, c: taskCompletion(state.tasks, (t) => t.assignedTo === s.id) }))
     .filter(({ c }) => c.total > 0)
@@ -165,6 +185,22 @@ export default function Reports() {
           headerRow: ['Date & time', 'Who', 'Branch', 'Event', 'Item / Task', 'Qty'],
           rows: rows.map((r) => [formatGivenAt(r.at), staffName(r.performedBy), branchName(r.branchId), r.pillStatus.replace(/_/g, ' '), r.subject, r.qtyDelta ?? '']),
         },
+        ...(markdownRows.length > 0
+          ? [
+              {
+                heading: 'Markdowns — original vs. sale price',
+                headerRow: ['Product', 'Original', 'Sale price', 'Units sold, 14d', 'Revenue at original', 'Revenue at sale price'],
+                rows: markdownRows.map((r) => [
+                  r.product.name,
+                  formatZAR(r.originalCents),
+                  formatZAR(r.discountedCents),
+                  r.units,
+                  formatZAR(r.originalRevenue),
+                  formatZAR(r.discountedRevenue),
+                ]),
+              },
+            ]
+          : []),
       ],
     })
   }
@@ -217,6 +253,41 @@ export default function Reports() {
           )
         })}
       </section>
+
+      {markdownRows.length > 0 && (
+        <section>
+          <div className="section-head">
+            <h3>Markdowns — original vs. sale price</h3>
+            <span className="muted small">{markdownRows.length}</span>
+          </div>
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Original</th>
+                  <th>Sale price</th>
+                  <th>Units sold, 14d</th>
+                  <th>Revenue at original</th>
+                  <th>Revenue at sale price</th>
+                </tr>
+              </thead>
+              <tbody>
+                {markdownRows.map((r) => (
+                  <tr key={r.product.sku}>
+                    <td>{r.product.name}</td>
+                    <td className="mono strike">{formatZAR(r.originalCents)}</td>
+                    <td className="mono sale">{formatZAR(r.discountedCents)}</td>
+                    <td className="mono">{r.units}</td>
+                    <td className="mono">{formatZAR(r.originalRevenue)}</td>
+                    <td className="mono">{formatZAR(r.discountedRevenue)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       <section>
         <div className="section-head">

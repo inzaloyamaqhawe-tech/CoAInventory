@@ -1,31 +1,34 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CATALOG, CATEGORIES, formatZAR } from '../data/catalog'
-import { useStore } from '../state/store.jsx'
+import { CATEGORIES, formatZAR } from '../data/catalog'
+import { useStore, useCatalog } from '../state/store.jsx'
 import { useBranchFilter } from '../state/branchFilter.jsx'
-import { swatchClass } from '../lib/derive'
+import { discountedPriceCents, swatchClass } from '../lib/derive'
 import StatusPill from '../components/StatusPill.jsx'
 import Icon from '../components/Icon.jsx'
 import Pagination from '../components/Pagination.jsx'
+import CsvImportModal from '../components/CsvImportModal.jsx'
 
 export default function Products() {
   const { state } = useStore()
+  const { catalog } = useCatalog()
   const { branchId } = useBranchFilter()
   const [q, setQ] = useState('')
   const [cat, setCat] = useState('All')
   const [view, setView] = useState('grid')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(25)
+  const [importing, setImporting] = useState(false)
 
   const filtered = useMemo(() => {
-    return CATALOG.filter((p) => (cat === 'All' || p.category === cat) && p.name.toLowerCase().includes(q.toLowerCase())).map((p) => {
+    return catalog.filter((p) => (cat === 'All' || p.category === cat) && p.name.toLowerCase().includes(q.toLowerCase())).map((p) => {
       const variantSkus = p.variants.map((v) => v.variantSku)
       const stockRows = state.stockLevels.filter((r) => variantSkus.includes(r.variantSku) && (!branchId || r.branchId === branchId))
       const total = stockRows.reduce((s, r) => s + r.qtyOnHand, 0)
       const anyLow = stockRows.some((r) => r.qtyOnHand <= r.reorderPoint)
       return { product: p, total, anyLow }
     })
-  }, [q, cat, state.stockLevels, branchId])
+  }, [q, cat, catalog, state.stockLevels, branchId])
 
   useEffect(() => setPage(1), [q, cat, branchId, pageSize])
   const rows = filtered.slice((page - 1) * pageSize, page * pageSize)
@@ -33,10 +36,17 @@ export default function Products() {
   return (
     <div className="page">
       <div className="page-head">
-        <h1>Products</h1>
-        <p className="muted">
-          {filtered.length} of {CATALOG.length} products · catalogue shared by every branch
-        </p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <h1>Products</h1>
+            <p className="muted">
+              {filtered.length} of {catalog.length} products · catalogue shared by every branch
+            </p>
+          </div>
+          <button className="btn-small btn-xs" onClick={() => setImporting(true)}>
+            <Icon name="download" size={12} /> Bulk upload CSV
+          </button>
+        </div>
       </div>
 
       <div className="toolbar">
@@ -68,8 +78,8 @@ export default function Products() {
                 <div className="product-card-name">{product.name}</div>
                 <div className="product-card-meta">
                   <span className="mono">
-                    {product.salePriceCents ? (
-                      <span className="sale">{formatZAR(product.salePriceCents)}</span>
+                    {product.discountPct || product.salePriceCents ? (
+                      <span className="sale">{formatZAR(discountedPriceCents(product))}</span>
                     ) : (
                       formatZAR(product.priceCents)
                     )}
@@ -104,9 +114,9 @@ export default function Products() {
                   <td className="mono muted">{product.sku}</td>
                   <td>{product.category}</td>
                   <td className="mono">
-                    {product.salePriceCents ? (
+                    {product.discountPct || product.salePriceCents ? (
                       <>
-                        <span className="strike">{formatZAR(product.priceCents)}</span> <span className="sale">{formatZAR(product.salePriceCents)}</span>
+                        <span className="strike">{formatZAR(product.priceCents)}</span> <span className="sale">{formatZAR(discountedPriceCents(product))}</span>
                       </>
                     ) : (
                       formatZAR(product.priceCents)
@@ -123,6 +133,8 @@ export default function Products() {
 
       {filtered.length === 0 && <p className="muted">No products match.</p>}
       {filtered.length > 0 && <Pagination page={page} pageSize={pageSize} total={filtered.length} onPage={setPage} onPageSize={setPageSize} />}
+
+      {importing && <CsvImportModal existingSkus={catalog.map((p) => p.sku)} onClose={() => setImporting(false)} />}
     </div>
   )
 }

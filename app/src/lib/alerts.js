@@ -2,13 +2,11 @@
 // the current stock state actually is — this recomputes live, so adjusting
 // a count in the Stock screen changes what shows up here.
 
-import { CATALOG } from '../data/catalog'
 import { branchName } from '../data/branches'
-
-const productBySku = Object.fromEntries(CATALOG.map((p) => [p.sku, p]))
+import { productOf } from './derive'
 
 function label(row) {
-  const p = productBySku[row.sku]
+  const p = productOf(row.sku)
   const name = p ? p.name : row.sku
   return row.size && row.size !== 'One Size' ? `${name} (${row.size})` : name
 }
@@ -23,7 +21,7 @@ export function computeAlerts(stockLevels) {
   const alerts = []
 
   for (const row of stockLevels) {
-    if (row.branchId === 'WH') continue // warehouse feeds transfers, not branch alerts
+    if (row.branchId === 'STUDIO') continue // studio feeds transfers, not branch alerts
     const cover = daysOfCover(row)
 
     if (row.qtyOnHand === 0 && row.soldLast14d > 0) {
@@ -112,7 +110,7 @@ export function computeTransferSuggestions(stockLevels, existingTransfers = []) 
   const suggestions = []
   for (const [variantSku, rows] of Object.entries(byVariant)) {
     const needy = rows
-      .filter((r) => r.branchId !== 'WH' && r.qtyOnHand <= r.reorderPoint)
+      .filter((r) => r.branchId !== 'STUDIO' && r.qtyOnHand <= r.reorderPoint)
       .sort((a, b) => daysOfCover(a) - daysOfCover(b))
     if (!needy.length) continue
 
@@ -150,7 +148,7 @@ export function computeTransferSuggestions(stockLevels, existingTransfers = []) 
 // not the general transfer-suggestion feed above (this is "who can cover
 // *this* shortfall right now", not "what's structurally imbalanced").
 // Ranking: (1) can fully cover the shortfall beats a partial cover, (2) the
-// warehouse is the natural source before drawing down another shopfloor's
+// studio is the natural source before drawing down another shopfloor's
 // stock, (3) among retail branches, the one with the most room above its
 // own reorder point — never recommends a branch down to its own shortage.
 export function recommendSourceBranch(stockLevels, variantSku, neededQty, excludeBranchId) {
@@ -159,8 +157,8 @@ export function recommendSourceBranch(stockLevels, variantSku, neededQty, exclud
     .map((r) => ({ row: r, spare: r.qtyOnHand - r.reorderPoint, covers: r.qtyOnHand >= neededQty }))
     .sort((a, b) => {
       if (a.covers !== b.covers) return a.covers ? -1 : 1
-      if (a.row.branchId === 'WH' && b.row.branchId !== 'WH') return -1
-      if (b.row.branchId === 'WH' && a.row.branchId !== 'WH') return 1
+      if (a.row.branchId === 'STUDIO' && b.row.branchId !== 'STUDIO') return -1
+      if (b.row.branchId === 'STUDIO' && a.row.branchId !== 'STUDIO') return 1
       return b.spare - a.spare
     })
   return candidates[0] ?? null

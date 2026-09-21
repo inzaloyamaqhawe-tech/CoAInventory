@@ -10,11 +10,33 @@ export default function Branches() {
   const { activeStaff } = useStaff()
   const alerts = computeAlerts(state.stockLevels)
 
+  // What the Studio is holding vs. what's already out across the three
+  // selling channels — the reconciliation view Tarryn asked for: every unit
+  // currently in the business, tabulated by where it's actually sitting.
+  const unitsAt = (branchId) => state.stockLevels.filter((r) => r.branchId === branchId).reduce((s, r) => s + r.qtyOnHand, 0)
+  const studioUnits = BRANCHES.filter((b) => b.type === 'warehouse').reduce((s, b) => s + unitsAt(b.id), 0)
+  const distributedUnits = BRANCHES.filter((b) => b.type === 'retail').reduce((s, b) => s + unitsAt(b.id), 0)
+
   return (
     <div className="page">
       <div className="page-head">
         <h1>Branches</h1>
         <p className="muted">{BRANCHES.length} locations</p>
+      </div>
+
+      <div className="stat-row">
+        <div className="stat">
+          <div className="k">At the Studio</div>
+          <div className="v">{studioUnits}</div>
+        </div>
+        <div className="stat">
+          <div className="k">Distributed — Store, Online, Market</div>
+          <div className="v">{distributedUnits}</div>
+        </div>
+        <div className="stat">
+          <div className="k">Total units in the business</div>
+          <div className="v">{studioUnits + distributedUnits}</div>
+        </div>
       </div>
 
       <div className="branch-grid">
@@ -30,7 +52,7 @@ export default function Branches() {
             <div key={b.id} className="branch-card">
               <div className="branch-card-head">
                 <h3>{b.name}</h3>
-                <span className="pill pill-muted">{b.type === 'warehouse' ? 'Warehouse' : 'Retail'}</span>
+                <span className="pill pill-muted">{b.type === 'warehouse' ? 'Studio' : 'Retail'}</span>
               </div>
               <p className="muted small">{b.city}</p>
               <div className="branch-stats">

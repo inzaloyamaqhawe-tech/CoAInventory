@@ -6,17 +6,17 @@ import StatusPill from '../components/StatusPill.jsx'
 import Modal from '../components/Modal.jsx'
 import Icon from '../components/Icon.jsx'
 
-const ROLE_KEYS = ['ops_manager', 'stock_controller', 'branch_manager', 'sales_associate']
+const ROLE_KEYS = ['ops_manager', 'owner', 'stock_controller', 'branch_manager', 'administrator', 'sales_associate']
 
-// The Ops Manager works across every branch, and the Stock Controller runs
-// the warehouse — neither is "at" a shop floor, so the branch picker only
-// applies to the two roles that actually stand in one.
+// The Ops Manager and Owner work across every branch, and the Stock
+// Controller runs the studio — none of those is "at" a shop floor, so the
+// branch picker only applies to roles that actually stand in one.
 function branchRequired(role) {
-  return role === 'branch_manager' || role === 'sales_associate'
+  return role === 'branch_manager' || role === 'administrator' || role === 'sales_associate'
 }
 function branchForRole(role, picked) {
-  if (role === 'ops_manager') return null
-  if (role === 'stock_controller') return 'WH'
+  if (role === 'ops_manager' || role === 'owner') return null
+  if (role === 'stock_controller') return 'STUDIO'
   return picked || ''
 }
 
@@ -59,7 +59,7 @@ function StaffForm({ initial, onCancel, onSave, saveLabel }) {
           </select>
         ) : (
           <p className="muted small" style={{ margin: '2px 0 0' }}>
-            {role === 'ops_manager' ? 'Works across all branches — no single branch to set.' : 'Runs Online Fulfilment (the warehouse).'}
+            {role === 'stock_controller' ? 'Runs the Studio (manufacturing/source).' : 'Works across all branches — no single branch to set.'}
           </p>
         )}
       </div>

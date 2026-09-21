@@ -39,8 +39,8 @@ export default function Team() {
 
   // The roster shown, and who a new task can go to, are both built off the
   // same branch-scoping rule as order assignment (assignableStaffForBranch)
-  // — a Sandton associate is never an option once a task's location isn't
-  // Sandton, and never shows up in the roster for a branch that isn't theirs.
+  // — a Store associate is never an option once a task's location isn't
+  // Store, and never shows up in the roster for a branch that isn't theirs.
   const rosterBranchIds = effectiveBranch ? [effectiveBranch] : BRANCHES.map((b) => b.id)
   const people = rosterBranchIds.flatMap(assignableStaffForBranch)
 
@@ -196,7 +196,7 @@ export default function Team() {
           </button>
         </form>
         <p className="muted small" style={{ marginTop: 6 }}>
-          A task needs a location and someone at that location before it can be saved — that's what keeps a Gateway task from ever landing on a Sandton associate.
+          A task needs a location and someone at that location before it can be saved — that's what keeps a Market task from ever landing on a Store associate.
         </p>
       </section>
 

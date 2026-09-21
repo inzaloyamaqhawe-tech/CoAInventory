@@ -209,7 +209,7 @@ export default function OrderDetail() {
                       <span>
                         Recommended: <b>{branchName(l.recommendation.row.branchId)}</b> has {l.recommendation.row.qtyOnHand} on hand
                         {l.recommendation.covers ? ' — enough to cover this' : ' — only a partial cover'}
-                        {l.recommendation.row.branchId === 'WH' ? ' (warehouse)' : ` (${l.recommendation.spare} spare above their reorder point)`}
+                        {l.recommendation.row.branchId === 'STUDIO' ? ' (studio)' : ` (${l.recommendation.spare} spare above their reorder point)`}
                       </span>
                     </div>
                     {l.inFlightTransfer ? (

@@ -1,7 +1,19 @@
 import { CATALOG } from '../data/catalog'
 import { BRANCHES } from '../data/branches'
 
-const productBySku = Object.fromEntries(CATALOG.map((p) => [p.sku, p]))
+// A mutable lookup, not a frozen snapshot of the seed catalogue — the live
+// catalogue (state.catalog) is store state now, extended at runtime by CSV
+// bulk upload and per-product discount edits (see useCatalog() in
+// state/store.jsx, which calls registerProducts() below whenever it
+// changes). Every caller here — and lib/alerts.js — reads through
+// productOf/priceOf rather than importing CATALOG directly, so a
+// newly-imported SKU or a freshly-set discount resolves everywhere at once
+// instead of five files each holding their own stale copy.
+let productBySku = Object.fromEntries(CATALOG.map((p) => [p.sku, p]))
+
+export function registerProducts(products) {
+  productBySku = Object.fromEntries(products.map((p) => [p.sku, p]))
+}
 
 const SWATCH_CLASS = {
   Accessories: 'swatch-accessories',
@@ -13,9 +25,16 @@ const SWATCH_CLASS = {
 export function swatchClass(category) {
   return SWATCH_CLASS[category] ?? 'swatch-loungewear'
 }
+// The markdown discount (5% steps, set on Product detail) always wins over
+// a seeded salePriceCents — they're the same idea, but the live discount is
+// the one a manager can actually see and change.
+export function discountedPriceCents(product) {
+  if (!product) return 0
+  if (product.discountPct) return Math.round(product.priceCents * (1 - product.discountPct / 100))
+  return product.salePriceCents ?? product.priceCents
+}
 export function priceOf(sku) {
-  const p = productBySku[sku]
-  return p?.salePriceCents ?? p?.priceCents ?? 0
+  return discountedPriceCents(productBySku[sku])
 }
 export function productOf(sku) {
   return productBySku[sku]
@@ -39,7 +58,7 @@ export function branchUnits14d(stockLevels, branchId) {
 // "what's actually flying off the shelf company-wide," not a per-branch
 // view (that's topMover below).
 export function topProducts(stockLevels, branchId, limit = 5) {
-  const scoped = stockLevels.filter((r) => r.branchId !== 'WH' && (!branchId || r.branchId === branchId))
+  const scoped = stockLevels.filter((r) => r.branchId !== 'STUDIO' && (!branchId || r.branchId === branchId))
   const unitsBySku = {}
   for (const r of scoped) {
     unitsBySku[r.sku] = (unitsBySku[r.sku] ?? 0) + r.soldLast14d

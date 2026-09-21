@@ -1,22 +1,40 @@
 // Where "just do it" stops and "someone else signs it off" starts.
 //
-// Small counts get corrected on the spot — that's the whole point of having
-// the Adjust button on the shop floor. But a large write-off is the one
-// action in here that can quietly make stock disappear, so past a threshold
-// it becomes a request instead of a change, and the Ops Manager approves or
-// rejects it. The requester can't be the approver, which is the only thing
-// that makes the sign-off worth anything.
-export const CORRECTION_APPROVAL_THRESHOLD = 10
+// A correction only actually moves stock once BOTH named approvers have
+// signed off — the Operations Manager and the Owner (or other management
+// approver) are two different people by design, so one compromised or
+// careless approval can't move stock on its own.
+export const APPROVER_ROLES = ['ops_manager', 'owner']
 
-// The Ops Manager is the approver, so their own adjustments apply directly —
-// there'd be nobody above them to ask, and a queue only they can clear that
-// only they can fill is just a slower button.
-export function needsApproval(delta, role) {
-  return Math.abs(delta) >= CORRECTION_APPROVAL_THRESHOLD && role !== 'ops_manager'
+// Every stock adjustment — any size, from anyone able to propose one — is a
+// request, never a direct change: no one auto-bypasses, and there is no
+// unit threshold under which a change is "small enough" to skip sign-off.
+// That's deliberate — the whole point of the twofold check is to catch the
+// ones that look small too. Adjusting is an administrative function: shop-
+// floor staff (sales associates) can't propose one at all, they manage
+// stock (counts, receiving via orders) but don't touch the on-hand number
+// directly. Neither can the two approver roles themselves — a request
+// needs sign-off from someone other than whoever raised it, and with only
+// one Operations Manager and one Owner in the business, either of them
+// proposing their own adjustment would leave it needing an approval nobody
+// else can ever give.
+export function canProposeAdjustment(role) {
+  return role !== 'sales_associate' && !APPROVER_ROLES.includes(role)
 }
 
-// null means "this person never needs approval" — the modals use it to
-// decide whether to warn about a threshold at all.
-export function approvalThresholdFor(role) {
-  return role === 'ops_manager' ? null : CORRECTION_APPROVAL_THRESHOLD
+export function canApproveCorrection(role) {
+  return APPROVER_ROLES.includes(role)
+}
+
+// A request is fully signed off once every approver role has a distinct,
+// non-requester approval recorded against it.
+export function isFullyApproved(correction) {
+  const approvals = correction.approvals ?? {}
+  return APPROVER_ROLES.every((role) => !!approvals[role])
+}
+
+// Markdown pricing is a management call, not a shop-floor one — the same
+// two roles who sign off stock corrections are the ones who set a discount.
+export function canManageDiscount(role) {
+  return APPROVER_ROLES.includes(role)
 }

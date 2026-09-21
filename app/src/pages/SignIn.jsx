@@ -16,12 +16,13 @@ export default function SignIn() {
   const { activeStaff } = useStaff()
 
   // Deactivated staff never appear here — that's what deactivating is for.
-  const byRole = {
-    ops_manager: activeStaff.filter((s) => s.role === 'ops_manager'),
-    stock_controller: activeStaff.filter((s) => s.role === 'stock_controller'),
-    branch_manager: activeStaff.filter((s) => s.role === 'branch_manager'),
-    sales_associate: activeStaff.filter((s) => s.role === 'sales_associate'),
-  }
+  // Built from ROLES itself (not a hand-copied list of role keys) so a new
+  // role added there — Owner, Administrator — shows up here automatically.
+  const byRole = Object.fromEntries(
+    Object.keys(ROLES)
+      .map((roleKey) => [roleKey, activeStaff.filter((s) => s.role === roleKey)])
+      .filter(([, people]) => people.length > 0)
+  )
 
   return (
     <div className="signin">

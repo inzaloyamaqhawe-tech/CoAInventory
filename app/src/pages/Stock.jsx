@@ -6,7 +6,7 @@ import { productOf } from '../lib/derive'
 import { CATEGORIES } from '../data/catalog'
 import { BRANCHES, branchName } from '../data/branches'
 import { daysOfCover } from '../lib/alerts'
-import { needsApproval, approvalThresholdFor } from '../lib/policy'
+import { canProposeAdjustment } from '../lib/policy'
 import { exportExcel, exportPDF } from '../lib/exportDocs'
 import StatusPill from '../components/StatusPill.jsx'
 import Pagination from '../components/Pagination.jsx'
@@ -19,6 +19,7 @@ export default function Stock() {
   const { staff, isAll } = useScope()
   const { branchId: filterBranch } = useBranchFilter()
   const effectiveBranch = isAll ? filterBranch : staff.branchId
+  const canAdjust = canProposeAdjustment(staff.role)
 
   const [q, setQ] = useState('')
   const [cat, setCat] = useState('All')
@@ -72,14 +73,11 @@ export default function Stock() {
   }
 
   function confirmBulkAdjust(delta, note, meta) {
-    if (needsApproval(delta, staff.role)) {
-      // Each line is its own stock movement, so each gets its own request —
-      // the approver can wave through the sizes that check out and reject
-      // the one that doesn't, instead of it being all-or-nothing.
-      selectedRows.forEach(({ row, product }) => submitAdjustment({ row, product, delta, note, isReturn: meta?.isReturn }))
-    } else {
-      dispatch({ type: 'BULK_ADJUST_STOCK', rowIds: selectedRows.map(({ row }) => row.id), delta, performedBy: staff.id, note, isReturn: meta?.isReturn })
-    }
+    // Every adjustment is a request now, never a direct change — each line
+    // is its own stock movement, so each gets its own request, and the
+    // approvers can wave through the sizes that check out and reject the
+    // one that doesn't, instead of it being all-or-nothing.
+    selectedRows.forEach(({ row, product }) => submitAdjustment({ row, product, delta, note, isReturn: meta?.isReturn }))
     setBulkAdjusting(false)
     setSelectedIds(new Set())
   }
@@ -91,34 +89,29 @@ export default function Stock() {
     return null
   }
 
-  // One helper for both paths so bulk can't become the way around the
-  // approval rule — a 40-unit write-off is a 40-unit write-off whether it
-  // was typed on one line or twenty.
+  // Shared by both the single-row and bulk modals so there's exactly one
+  // place a request gets built — every adjustment is a request, none of
+  // them move stock until both the Ops Manager and the Owner sign off.
   function submitAdjustment({ row, product, delta, note, isReturn }) {
-    if (needsApproval(delta, staff.role)) {
-      dispatch({
-        type: 'REQUEST_CORRECTION',
-        correction: {
-          id: `COR-${Date.now()}-${row.id}`,
-          rowId: row.id,
-          variantSku: row.variantSku,
-          sku: row.sku,
-          size: row.size,
-          productName: product?.name ?? row.sku,
-          branchId: row.branchId,
-          qtyBefore: row.qtyOnHand,
-          delta,
-          note,
-          isReturn: !!isReturn,
-          requestedBy: staff.id,
-          requestedAt: new Date().toISOString(),
-          status: 'pending',
-        },
-      })
-      return true // went to the queue rather than the shelf
-    }
-    dispatch({ type: 'ADJUST_STOCK', rowId: row.id, delta, performedBy: staff.id, note, isReturn })
-    return false
+    dispatch({
+      type: 'REQUEST_CORRECTION',
+      correction: {
+        id: `COR-${Date.now()}-${row.id}`,
+        rowId: row.id,
+        variantSku: row.variantSku,
+        sku: row.sku,
+        size: row.size,
+        productName: product?.name ?? row.sku,
+        branchId: row.branchId,
+        qtyBefore: row.qtyOnHand,
+        delta,
+        note,
+        isReturn: !!isReturn,
+        requestedBy: staff.id,
+        requestedAt: new Date().toISOString(),
+        status: 'pending',
+      },
+    })
   }
 
   function confirmAdjust(delta, note, meta) {
@@ -227,9 +220,11 @@ export default function Stock() {
       {selectedIds.size > 0 && (
         <div className="toolbar" style={{ background: 'var(--surface-2)', borderRadius: 'var(--radius)', padding: '8px 12px' }}>
           <span className="mono small">{selectedIds.size} selected</span>
-          <button className="btn-small btn-xs" onClick={() => setBulkAdjusting(true)}>
-            <Icon name="tag" size={11} /> Bulk adjust
-          </button>
+          {canAdjust && (
+            <button className="btn-small btn-xs" onClick={() => setBulkAdjusting(true)}>
+              <Icon name="tag" size={11} /> Bulk adjust
+            </button>
+          )}
           <button className="btn-small btn-ghost btn-xs" onClick={() => setSelectedIds(new Set())}>
             Clear selection
           </button>
@@ -276,9 +271,13 @@ export default function Stock() {
                   <td className="mono muted">{Number.isFinite(cover) ? `${cover.toFixed(0)}d` : '—'}</td>
                   <td>{st && <StatusPill status={st} />}</td>
                   <td className="adjust-cell">
-                    <button className="adjust-btn" onClick={() => setAdjusting({ row, product })}>
-                      Adjust
-                    </button>
+                    {canAdjust ? (
+                      <button className="adjust-btn" onClick={() => setAdjusting({ row, product })}>
+                        Adjust
+                      </button>
+                    ) : (
+                      <span className="muted small">—</span>
+                    )}
                   </td>
                 </tr>
               )
@@ -299,23 +298,10 @@ export default function Stock() {
       )}
 
       {adjusting && (
-        <AdjustStockModal
-          row={adjusting.row}
-          product={adjusting.product}
-          approvalThreshold={approvalThresholdFor(staff.role)}
-          onClose={() => setAdjusting(null)}
-          onConfirm={confirmAdjust}
-        />
+        <AdjustStockModal row={adjusting.row} product={adjusting.product} onClose={() => setAdjusting(null)} onConfirm={confirmAdjust} />
       )}
 
-      {bulkAdjusting && (
-        <BulkAdjustModal
-          rows={selectedRows}
-          approvalThreshold={approvalThresholdFor(staff.role)}
-          onClose={() => setBulkAdjusting(false)}
-          onConfirm={confirmBulkAdjust}
-        />
-      )}
+      {bulkAdjusting && <BulkAdjustModal rows={selectedRows} onClose={() => setBulkAdjusting(false)} onConfirm={confirmBulkAdjust} />}
     </div>
   )
 }

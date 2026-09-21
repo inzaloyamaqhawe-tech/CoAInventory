@@ -1,16 +1,24 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { CATALOG, formatZAR } from '../data/catalog'
-import { useStore, useStaff } from '../state/store.jsx'
+import { formatZAR } from '../data/catalog'
+import { useStore, useStaff, useCatalog } from '../state/store.jsx'
+import { useScope } from '../lib/scope'
 import { BRANCHES, branchName } from '../data/branches'
 import { timeAgo } from '../lib/scope'
+import { discountedPriceCents } from '../lib/derive'
+import { canManageDiscount } from '../lib/policy'
 import StatusPill from '../components/StatusPill.jsx'
+
+const DISCOUNT_STEPS = Array.from({ length: 21 }, (_, i) => i * 5) // 0, 5, 10, … 100
 
 export default function ProductDetail() {
   const { sku } = useParams()
-  const { state } = useStore()
+  const { state, dispatch } = useStore()
   const { staffName } = useStaff()
-  const product = CATALOG.find((p) => p.sku === sku)
+  const { catalog } = useCatalog()
+  const { staff } = useScope()
+  const [editingDiscount, setEditingDiscount] = useState(false)
+  const product = catalog.find((p) => p.sku === sku)
 
   if (!product) {
     return (
@@ -38,9 +46,9 @@ export default function ProductDetail() {
         <div className="stat">
           <div className="k">Price</div>
           <div className="v">
-            {product.salePriceCents ? (
+            {product.discountPct || product.salePriceCents ? (
               <>
-                <span className="strike small">{formatZAR(product.priceCents)}</span> {formatZAR(product.salePriceCents)}
+                <span className="strike small">{formatZAR(product.priceCents)}</span> {formatZAR(discountedPriceCents(product))}
               </>
             ) : (
               formatZAR(product.priceCents)
@@ -55,7 +63,42 @@ export default function ProductDetail() {
           <div className="k">Variants</div>
           <div className="v">{product.variants.length}</div>
         </div>
+        {canManageDiscount(staff.role) && (
+          <div className="stat">
+            <div className="k">Discount</div>
+            <div className="v">
+              {editingDiscount ? (
+                <select
+                  className="input"
+                  style={{ width: 100 }}
+                  autoFocus
+                  value={product.discountPct ?? 0}
+                  onChange={(e) => {
+                    dispatch({ type: 'SET_DISCOUNT', sku: product.sku, discountPct: Number(e.target.value) })
+                    setEditingDiscount(false)
+                  }}
+                  onBlur={() => setEditingDiscount(false)}
+                >
+                  {DISCOUNT_STEPS.map((pct) => (
+                    <option key={pct} value={pct}>
+                      {pct}%
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <button className="btn-small btn-ghost btn-xs" onClick={() => setEditingDiscount(true)}>
+                  {product.discountPct ? `${product.discountPct}% off` : 'Set markdown'}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
+      {(product.discountPct || product.salePriceCents) && (
+        <p className="muted small" style={{ marginTop: -8 }}>
+          Marked down from {formatZAR(product.priceCents)} to {formatZAR(discountedPriceCents(product))} — reports keep both figures so revenue stays auditable.
+        </p>
+      )}
 
       <section>
         <div className="section-head">

@@ -7,7 +7,7 @@ import { branchName } from '../data/branches'
 // usually lands the same qty across several sizes at once. No single
 // "X on hand → Y" preview here since every selected row starts from a
 // different on-hand count; the table below carries that per line instead.
-export default function BulkAdjustModal({ rows, approvalThreshold, onClose, onConfirm }) {
+export default function BulkAdjustModal({ rows, onClose, onConfirm }) {
   const [direction, setDirection] = useState('add') // 'add' | 'remove'
   const [qty, setQty] = useState('')
   const [note, setNote] = useState('')
@@ -15,9 +15,8 @@ export default function BulkAdjustModal({ rows, approvalThreshold, onClose, onCo
 
   const amount = Math.max(0, Math.floor(Number(qty) || 0))
   const delta = direction === 'add' ? amount : -amount
-  const valid = amount > 0 && (direction === 'add' || rows.every(({ row }) => amount <= row.qtyOnHand))
-
-  const willNeedApproval = approvalThreshold != null && amount >= approvalThreshold
+  const noteValid = note.trim().length >= 3
+  const valid = amount > 0 && (direction === 'add' || rows.every(({ row }) => amount <= row.qtyOnHand)) && noteValid
 
   function setDir(next) {
     setDirection(next)
@@ -26,11 +25,7 @@ export default function BulkAdjustModal({ rows, approvalThreshold, onClose, onCo
 
   function confirm() {
     if (!valid) return
-    onConfirm(
-      delta,
-      note.trim() || (isReturn ? 'Customer return' : direction === 'add' ? 'Stock received' : 'Stock removed'),
-      { isReturn: direction === 'add' && isReturn }
-    )
+    onConfirm(delta, note.trim(), { isReturn: direction === 'add' && isReturn })
   }
 
   return (
@@ -44,11 +39,7 @@ export default function BulkAdjustModal({ rows, approvalThreshold, onClose, onCo
             Cancel
           </button>
           <button className="btn-small" disabled={!valid} onClick={confirm}>
-            {willNeedApproval
-              ? `Send ${rows.length} for approval`
-              : direction === 'add'
-                ? `Add to ${rows.length} lines`
-                : `Remove from ${rows.length} lines`}
+            Send {rows.length} for approval
           </button>
         </>
       }
@@ -95,12 +86,9 @@ export default function BulkAdjustModal({ rows, approvalThreshold, onClose, onCo
         )}
       </div>
 
-      {willNeedApproval && (
-        <p className="small" style={{ color: 'var(--warn)', margin: 0 }}>
-          {amount} units per line is at or over the {approvalThreshold}-unit mark — each line goes to the Ops Manager
-          as its own request, and nothing moves until they're approved.
-        </p>
-      )}
+      <p className="small" style={{ color: 'var(--warn)', margin: 0 }}>
+        Each line goes to the Operations Manager and the Owner as its own request — nothing moves until both approve it.
+      </p>
 
       <div className="table-wrap" style={{ maxHeight: 200 }}>
         <table className="table">
@@ -128,13 +116,14 @@ export default function BulkAdjustModal({ rows, approvalThreshold, onClose, onCo
       </div>
 
       <div>
-        <span className="field-label">Note (optional)</span>
+        <span className="field-label">Note — say what happened</span>
         <textarea
           className="textarea"
-          placeholder={isReturn ? 'e.g. Wrong size, no matching size in stock — refunded' : direction === 'add' ? 'e.g. Delivery from warehouse' : 'e.g. Damaged, count correction'}
+          placeholder={isReturn ? 'e.g. Wrong size, no matching size in stock — refunded' : direction === 'add' ? 'e.g. Delivery from studio' : 'e.g. Damaged, count correction'}
           value={note}
           onChange={(e) => setNote(e.target.value)}
         />
+        {!noteValid && note.length > 0 && <p className="small" style={{ color: 'var(--critical)', margin: '4px 0 0' }}>A short reason is required.</p>}
       </div>
     </Modal>
   )
