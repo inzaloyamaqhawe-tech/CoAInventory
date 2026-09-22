@@ -29,7 +29,13 @@ export default function OrderDetail() {
       const product = productOf(it.sku)
       const ownRow = state.stockLevels.find((r) => r.variantSku === it.variantSku && r.branchId === order.branchId)
       const onHand = ownRow?.qtyOnHand ?? 0
-      const short = Math.max(0, it.qty - onHand)
+      // "Short" is about what's still left to gather, not the order's full
+      // quantity — a line that's already fully picked doesn't care what the
+      // shelf count says anymore, the units are in hand. Comparing on-hand
+      // against the original qty regardless of pick progress is what made a
+      // fully-picked line still read as blocked.
+      const remaining = Math.max(0, it.qty - it.pickedQty)
+      const short = Math.max(0, remaining - onHand)
       const recommendation = short > 0 ? recommendSourceBranch(state.stockLevels, it.variantSku, short, order.branchId) : null
       const openRequest = state.stockRequests.find((r) => r.orderId === order.id && r.variantSku === it.variantSku && r.status === 'open')
       // A manager's "Pull" skips the request inbox and creates the transfer
@@ -39,7 +45,7 @@ export default function OrderDetail() {
       const inFlightTransfer = state.transfers.find(
         (t) => t.variantSku === it.variantSku && t.toBranchId === order.branchId && t.status !== 'received' && t.status !== 'cancelled'
       )
-      return { item: it, product, onHand, short, recommendation, openRequest, inFlightTransfer }
+      return { item: it, product, onHand, remaining, short, recommendation, openRequest, inFlightTransfer }
     })
   }, [order, state.stockLevels, state.stockRequests, state.transfers])
 
@@ -133,7 +139,7 @@ export default function OrderDetail() {
         <div className="stat">
           <div className="k">Can fulfil now</div>
           <div className="v" style={{ color: canFulfil ? 'var(--ok)' : 'var(--critical)' }}>
-            {canFulfil ? 'Yes' : `No — ${lines.filter((l) => l.short > 0).length} short`}
+            {canFulfil ? 'Yes' : `No — ${lines.reduce((s, l) => s + l.short, 0)} unit${lines.reduce((s, l) => s + l.short, 0) === 1 ? '' : 's'} still needed`}
           </div>
         </div>
         <div className="stat">
@@ -172,11 +178,15 @@ export default function OrderDetail() {
                 </div>
                 <div className="sub mono">{l.item.variantSku}</div>
               </div>
-              {l.short === 0 ? (
-                <span className="pill pill-ok">Available · {l.onHand} on hand</span>
+              {l.remaining === 0 ? (
+                <span className="pill pill-ok">Picked — ready</span>
+              ) : l.short === 0 ? (
+                <span className="pill pill-ok">
+                  {l.remaining} left to pick · {l.onHand} on hand
+                </span>
               ) : (
                 <span className="pill pill-critical">
-                  Short by {l.short} · {l.onHand} on hand
+                  Short by {l.short} of {l.remaining} still needed · {l.onHand} on hand
                 </span>
               )}
             </div>
