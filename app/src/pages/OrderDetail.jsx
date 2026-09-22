@@ -65,8 +65,13 @@ export default function OrderDetail() {
   const options = assignableStaffForBranch(order.branchId)
   const isDone = order.status === 'fulfilled'
   // The assigned person does their own picking; a manager can step in too
-  // (covering, correcting a miscount) — nobody else touches someone else's order.
-  const canPick = !isDone && (staff.id === order.assignedTo || !isAssociate)
+  // (covering, correcting a miscount) — nobody else touches someone else's
+  // order. And nobody picks against an unowned order at all: an order with
+  // no one assigned has no one accountable for what leaves the shelf
+  // against it, which is exactly the gap that let stock get pulled with no
+  // traceable owner. Assign it first — that's its own logged event — then
+  // picking has a name attached to it from the very first unit.
+  const canPick = !isDone && !!order.assignedTo && (staff.id === order.assignedTo || !isAssociate)
 
   function advance() {
     const idx = FLOW.indexOf(order.status)
@@ -203,10 +208,12 @@ export default function OrderDetail() {
                   <span className="muted small">· by {staffName(l.item.pickedBy)}</span>
                 )}
               </div>
-              {canPick && (
+              {canPick ? (
                 <button className="adjust-btn" onClick={() => setRecordingIndex(i)}>
                   Record
                 </button>
+              ) : (
+                !isDone && !order.assignedTo && <span className="muted small">Assign this order before picking</span>
               )}
             </div>
 

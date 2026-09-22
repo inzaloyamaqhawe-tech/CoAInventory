@@ -81,8 +81,8 @@ const TYPE_FILTERS = [
   // from the point of view of someone auditing what left the shelf — group
   // them, since a real till sale showing up under "Stock out" is a feature
   // (it's stock going out), not a miscategorization.
-  { key: 'Stock out', match: (r) => r.type === 'sale' || r.type === 'count_adjustment' },
-  { key: 'Returns', match: (r) => r.type === 'return' },
+  { key: 'Stock out', match: (r) => r.type === 'sale' || r.type === 'count_adjustment' || r.type === 'order_pick' || r.type === 'pos_scan' },
+  { key: 'Returns', match: (r) => r.type === 'return' || r.type === 'pos_scan_void' },
   { key: 'Tasks', match: (r) => r.type === 'task_completed' || r.type === 'task_reopened' },
   { key: 'Orders', match: (r) => r.type === 'order_status' || r.type === 'order_reassigned' },
   { key: 'Corrections', match: (r) => r.type === 'correction_approved' || r.type === 'correction_rejected' },

@@ -106,6 +106,68 @@ function reducer(state, action) {
       return { ...state, stockLevels, activity: [...newEntries, ...state.activity] }
     }
 
+    // ---------- barcode scanner (POS) sales ----------
+    // A scan is a checkout sale, not a manual adjustment — one unit off the
+    // shelf per scan, logged under its own activity type (`pos_scan`) so
+    // Reports can show scanner throughput on its own instead of mixed into
+    // plain stock-out. `reference` is the scan/session's own id, standing in
+    // for the receipt/transaction id a real POS would hand back — every
+    // future integration (see 06-API-AND-INTEGRATIONS.md) plugs in here by
+    // dispatching the same action from a webhook handler instead of this UI.
+    case 'SCAN_SALE': {
+      const { rowId, qty, performedBy, reference } = action
+      const row = state.stockLevels.find((r) => r.id === rowId)
+      if (!row || row.qtyOnHand < qty) return state
+      const stockLevels = state.stockLevels.map((r) =>
+        r.id === rowId ? { ...r, qtyOnHand: r.qtyOnHand - qty, soldLast14d: r.soldLast14d + qty, lastCountedAt: new Date().toISOString() } : r
+      )
+      const activity = [
+        {
+          id: `ACT-${Date.now()}`,
+          type: 'pos_scan',
+          variantSku: row.variantSku,
+          sku: row.sku,
+          size: row.size,
+          branchId: row.branchId,
+          qtyDelta: -qty,
+          performedBy,
+          note: `Scanned at till · ${reference}`,
+          reference,
+          at: new Date().toISOString(),
+        },
+        ...state.activity,
+      ]
+      return { ...state, stockLevels, activity }
+    }
+
+    // Voiding a misscan puts the unit straight back — same session, same
+    // cashier catching their own mistake, not a customer return days later.
+    case 'VOID_SCAN_SALE': {
+      const original = state.activity.find((a) => a.reference === action.reference && a.type === 'pos_scan')
+      if (!original) return state
+      const qty = -original.qtyDelta
+      const stockLevels = state.stockLevels.map((r) =>
+        r.variantSku === original.variantSku && r.branchId === original.branchId ? { ...r, qtyOnHand: r.qtyOnHand + qty, soldLast14d: Math.max(0, r.soldLast14d - qty) } : r
+      )
+      const activity = [
+        {
+          id: `ACT-${Date.now()}`,
+          type: 'pos_scan_void',
+          variantSku: original.variantSku,
+          sku: original.sku,
+          size: original.size,
+          branchId: original.branchId,
+          qtyDelta: qty,
+          performedBy: action.performedBy,
+          note: `Voided scan · ${action.reference}`,
+          reference: action.reference,
+          at: new Date().toISOString(),
+        },
+        ...state.activity,
+      ]
+      return { ...state, stockLevels, activity }
+    }
+
     // Marking a task done (or un-marking it) is exactly the kind of "who did
     // what, when" moment Reports exists to answer — it goes into the same
     // activity feed as stock movements so one search covers both, instead
@@ -216,17 +278,49 @@ function reducer(state, action) {
     // An associate (or a manager stepping in) marking units of one order
     // line as physically picked — independent of stock counts, this is
     // purely "how far along is this order," per item.
+    // Picking is a real stock movement, not a checklist tick — the units a
+    // picker sets aside for an order are no longer sitting on the shelf for
+    // anything else to claim, so recording a pick pulls stock the moment it
+    // happens (and un-picking, a correction, puts it back). Without this,
+    // "on hand" and "what's been picked for this order" could disagree —
+    // exactly the gap that let a fully-picked line still read as short.
     case 'MARK_PICKED': {
+      const order = state.orders.find((o) => o.id === action.orderId)
+      const item = order?.items[action.itemIndex]
+      if (!item) return state
+      const row = state.stockLevels.find((r) => r.variantSku === item.variantSku && r.branchId === order.branchId)
+      const onHand = row?.qtyOnHand ?? 0
+      // Can't physically pick more than what's actually on the shelf —
+      // cap a positive delta by what's on hand; un-picking is only ever
+      // bounded by what's already been picked (handled by the clamp below).
+      const cappedDelta = action.delta > 0 ? Math.min(action.delta, onHand) : action.delta
+      const pickedQty = Math.max(0, Math.min(item.qty, item.pickedQty + cappedDelta))
+      const actualDelta = pickedQty - item.pickedQty
+      if (actualDelta === 0) return state
+
       const orders = state.orders.map((o) => {
         if (o.id !== action.orderId) return o
-        const items = o.items.map((it, i) => {
-          if (i !== action.itemIndex) return it
-          const pickedQty = Math.max(0, Math.min(it.qty, it.pickedQty + action.delta))
-          return { ...it, pickedQty, pickedBy: pickedQty > 0 ? action.staffId : null }
-        })
+        const items = o.items.map((it, i) => (i !== action.itemIndex ? it : { ...it, pickedQty, pickedBy: pickedQty > 0 ? action.staffId : null }))
         return { ...o, items }
       })
-      return { ...state, orders }
+      const stockLevels = row
+        ? state.stockLevels.map((r) => (r.id === row.id ? { ...r, qtyOnHand: Math.max(0, r.qtyOnHand - actualDelta) } : r))
+        : state.stockLevels
+      const activity = [
+        {
+          id: `ACT-${Date.now()}`,
+          type: 'order_pick',
+          variantSku: item.variantSku,
+          sku: item.sku,
+          branchId: order.branchId,
+          qtyDelta: -actualDelta,
+          performedBy: action.staffId,
+          note: `Picked for ${order.id}`,
+          at: new Date().toISOString(),
+        },
+        ...state.activity,
+      ]
+      return { ...state, orders, stockLevels, activity }
     }
 
     case 'ADVANCE_TRANSFER': {

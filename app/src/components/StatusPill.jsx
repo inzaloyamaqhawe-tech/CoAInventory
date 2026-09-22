@@ -14,6 +14,7 @@ const MAP = {
   // activity-log event types (Reports)
   receive: 'ok', sale: 'muted', count_adjustment: 'warn', task_completed: 'ok', task_reopened: 'muted',
   order_reassigned: 'suggest', correction_approved: 'ok', correction_rejected: 'critical',
+  pos_scan: 'ok', pos_scan_void: 'critical', order_pick: 'muted',
 }
 
 const TEXT = {
@@ -22,6 +23,7 @@ const TEXT = {
   return: 'Return',
   receive: 'Stock in', sale: 'Sale', count_adjustment: 'Adjustment', task_completed: 'Task done', task_reopened: 'Task reopened',
   order_reassigned: 'Reassigned', correction_approved: 'Correction approved', correction_rejected: 'Correction rejected',
+  pos_scan: 'Scanned sale', pos_scan_void: 'Scan voided', order_pick: 'Picked for order',
 }
 
 export default function StatusPill({ status, children }) {

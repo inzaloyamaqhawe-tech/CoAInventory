@@ -25,7 +25,7 @@ function mulberry32(seed) {
 // data away instead of quietly keeping serving whatever tier probabilities
 // were live the day they first opened the app. Without this, editing this
 // file only ever affects a brand-new browser profile.
-export const DATA_VERSION = 7
+export const DATA_VERSION = 8
 
 const rand = mulberry32(20260908)
 const ri = (min, max) => Math.floor(rand() * (max - min + 1)) + min
@@ -131,16 +131,23 @@ export function generateOrders(stockRows) {
     const items = []
     for (let j = 0; j < nItems; j++) {
       const row = pick(withStock)
+      const ownRow = stockRows.find((r) => r.variantSku === row.variantSku && r.branchId === branchId)
       // ~30% of lines deliberately ask for more than this branch actually
       // has on hand right now — a real order can't always be fully picked
       // from its own shelf, which is exactly what the fulfilment check on
       // the order detail page exists to catch.
-      const ownQty = stockRows.find((r) => r.variantSku === row.variantSku && r.branchId === branchId)?.qtyOnHand ?? 0
+      const ownQty = ownRow?.qtyOnHand ?? 0
       const short = rand() < 0.3
       const qty = short ? ownQty + ri(1, 3) : ri(1, 2)
       // No assignee yet means nobody's picking yet either; anything packed
-      // or further has necessarily been fully picked already.
-      const pickedQty = status === 'new' ? 0 : qty
+      // or further has necessarily had picking done — capped by what was
+      // actually on the shelf at seed time, and deducted from it, because
+      // picking is a real stock movement (see MARK_PICKED in
+      // state/store.jsx) and seed data has to obey the same rule live
+      // picking does, or a freshly-seeded order reads as picked while the
+      // shelf count never moved.
+      const pickedQty = status === 'new' ? 0 : Math.min(qty, ownQty)
+      if (pickedQty > 0 && ownRow) ownRow.qtyOnHand -= pickedQty
       items.push({ variantSku: row.variantSku, sku: row.sku, qty, pickedQty, pickedBy: pickedQty > 0 ? assignedTo : null })
     }
     orders.push({
@@ -163,8 +170,13 @@ export function generateOrders(stockRows) {
     const associate = pick(SEED_STAFF.filter((s) => s.branchId === candidate.branchId && s.role === 'sales_associate').map((s) => s.id))
     candidate.assignedTo = associate
     const line = candidate.items.find((it) => it.qty >= 2)
-    line.pickedQty = ri(1, line.qty - 1)
-    line.pickedBy = associate
+    const ownRow = stockRows.find((r) => r.variantSku === line.variantSku && r.branchId === candidate.branchId)
+    const pickable = Math.min(line.qty - 1, ownRow?.qtyOnHand ?? 0)
+    if (pickable > 0) {
+      line.pickedQty = ri(1, pickable)
+      line.pickedBy = associate
+      if (ownRow) ownRow.qtyOnHand -= line.pickedQty
+    }
   }
 
   return orders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
