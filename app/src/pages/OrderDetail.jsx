@@ -64,19 +64,25 @@ export default function OrderDetail() {
   const canFulfil = lines.every((l) => l.short === 0)
   const options = assignableStaffForBranch(order.branchId)
   const isDone = order.status === 'fulfilled'
-  // The assigned person does their own picking; a manager can step in too
-  // (covering, correcting a miscount) — nobody else touches someone else's
-  // order. And nobody picks against an unowned order at all: an order with
-  // no one assigned has no one accountable for what leaves the shelf
-  // against it, which is exactly the gap that let stock get pulled with no
-  // traceable owner. Assign it first — that's its own logged event — then
-  // picking has a name attached to it from the very first unit.
-  const canPick = !isDone && !!order.assignedTo && (staff.id === order.assignedTo || !isAssociate)
+  // The single gate for every action on this order — picking, requesting
+  // stock, advancing its status. The assigned person acts on their own
+  // order; a manager can step in too (covering, correcting a miscount) —
+  // nobody else touches someone else's order. And nobody acts on an
+  // unowned order at all: no assignee means no one accountable for what
+  // happens to it, which is exactly the gap that let stock move (and
+  // status advance) with no traceable owner. Claim it or get assigned —
+  // that's its own logged event — before anything else is possible.
+  const canAct = !isDone && !!order.assignedTo && (staff.id === order.assignedTo || !isAssociate)
 
   function advance() {
+    if (!canAct) return
     const idx = FLOW.indexOf(order.status)
     if (idx === -1 || idx === FLOW.length - 1) return
     dispatch({ type: 'SET_ORDER_STATUS', orderId: order.id, status: FLOW[idx + 1], performedBy: staff.id })
+  }
+
+  function claim() {
+    dispatch({ type: 'ASSIGN_ORDER', orderId: order.id, staffId: staff.id, performedBy: staff.id })
   }
 
   function markPicked(itemIndex, delta) {
@@ -156,16 +162,24 @@ export default function OrderDetail() {
               <div style={{ marginTop: 2 }}>
                 <ReassignControl order={order} options={options} />
               </div>
+            ) : owner ? (
+              owner.name
             ) : (
-              owner?.name ?? 'Unassigned'
+              <button className="btn-small btn-ghost btn-xs" onClick={claim}>
+                <Icon name="tag" size={11} /> Unassigned — take it
+              </button>
             )}
           </div>
         </div>
         {NEXT_LABEL[order.status] && (
           <div className="stat" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <button className="btn-small" onClick={advance}>
-              {NEXT_LABEL[order.status]}
-            </button>
+            {canAct ? (
+              <button className="btn-small" onClick={advance}>
+                {NEXT_LABEL[order.status]}
+              </button>
+            ) : (
+              <span className="muted small">Assign this order first</span>
+            )}
           </div>
         )}
       </div>
@@ -208,7 +222,7 @@ export default function OrderDetail() {
                   <span className="muted small">· by {staffName(l.item.pickedBy)}</span>
                 )}
               </div>
-              {canPick ? (
+              {canAct ? (
                 <button className="adjust-btn" onClick={() => setRecordingIndex(i)}>
                   Record
                 </button>
@@ -235,6 +249,12 @@ export default function OrderDetail() {
                       </span>
                     ) : l.openRequest ? (
                       <span className="pill pill-suggest">Requested — awaiting manager</span>
+                    ) : !canAct ? (
+                      // Same rule as picking: no one acts on an order that
+                      // isn't theirs (or that has no one on it at all) —
+                      // requesting stock against someone else's unassigned
+                      // order is the exact gap picking already closed.
+                      <span className="muted small">Assign this order before requesting stock</span>
                     ) : isAssociate ? (
                       <button className="btn-small btn-xs" onClick={() => requestLine(l)}>
                         Request {l.short} from {branchName(l.recommendation.row.branchId)}

@@ -52,7 +52,18 @@ export default function Orders() {
   useEffect(() => setPage(1), [q, statusFilter, assignFilter, effectiveBranch, pageSize])
   const orders = filtered.slice((page - 1) * pageSize, page * pageSize)
 
+  // The one gate for every action a row's buttons can take — same rule as
+  // OrderDetail's own canAct: the assigned person acts on their own order,
+  // a manager can step in, and nobody acts on an order that has no owner
+  // at all. Without this, the list view's own copies of these buttons were
+  // a second, unguarded way to move stock or advance status on an order
+  // that wasn't yours.
+  function canActOn(order) {
+    return order.status !== 'fulfilled' && !!order.assignedTo && (staff.id === order.assignedTo || !isAssociate)
+  }
+
   function advance(order) {
+    if (!canActOn(order)) return
     const idx = FLOW.indexOf(order.status)
     if (idx === -1 || idx === FLOW.length - 1) return
     dispatch({ type: 'SET_ORDER_STATUS', orderId: order.id, status: FLOW[idx + 1], performedBy: staff.id })
@@ -177,6 +188,7 @@ export default function Orders() {
                     {isAssociate &&
                       !isDone &&
                       short > 0 &&
+                      canActOn(o) &&
                       (requested ? (
                         <span className="pill pill-suggest">Requested</span>
                       ) : (
@@ -191,11 +203,14 @@ export default function Orders() {
 
             <div className="order-bottom">
               <span className="muted small">{o.items.length} item{o.items.length !== 1 ? 's' : ''}</span>
-              {NEXT_LABEL[o.status] && (
-                <button className="btn-small" onClick={() => advance(o)}>
-                  {NEXT_LABEL[o.status]}
-                </button>
-              )}
+              {NEXT_LABEL[o.status] &&
+                (canActOn(o) ? (
+                  <button className="btn-small" onClick={() => advance(o)}>
+                    {NEXT_LABEL[o.status]}
+                  </button>
+                ) : (
+                  !o.assignedTo && <span className="muted small">Take it first</span>
+                ))}
             </div>
           </div>
         )
